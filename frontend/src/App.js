@@ -9,6 +9,7 @@ import AppLayout from './components/layout/AppLayout';
 import Login from './pages/Login';
 import AdminDashboard from './pages/AdminDashboard';
 import Students from './pages/Students';
+import Classes from './pages/Classes';
 import GradesManagement from './pages/GradesManagement';
 import AttendanceScanner from './pages/AttendanceScanner';
 import Payments from './pages/Payments';
@@ -46,7 +47,7 @@ function AppRoutes() {
       }>
         <Route path="/dashboard" element={<AdminDashboard />} />
         <Route path="/students" element={<Students />} />
-        <Route path="/classes" element={<div style={{padding: 20}}><h2>Gestion des Classes</h2><p style={{color: '#667085', marginTop: 8}}>Module disponible dans l'administration Django (/admin)</p></div>} />
+        <Route path="/classes" element={<Classes />} />
         <Route path="/grades" element={<GradesManagement />} />
         <Route path="/attendance" element={<AttendanceScanner />} />
         <Route path="/payments" element={<Payments />} />

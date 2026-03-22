@@ -10,6 +10,7 @@ from utils.sms_service import send_sms
 from .models import Attendance
 from .serializers import AttendanceSerializer, ScanQRSerializer
 import logging
+from apps.payments.models import Payment
 
 logger = logging.getLogger('apps')
 
