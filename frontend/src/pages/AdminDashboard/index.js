@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
-import { FiUsers, FiBookOpen, FiDollarSign, FiCheckCircle, FiClock, FiAlertTriangle } from 'react-icons/fi';
+import {
+  FiUsers, FiBookOpen, FiDollarSign, FiCheckCircle,
+  FiClock, FiAlertTriangle
+} from 'react-icons/fi';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 function AdminDashboard() {
@@ -61,10 +64,30 @@ function AdminDashboard() {
       <div className="stats-grid">
         <div className="stat-card">
           <div className="stat-icon blue"><FiUsers /></div>
-          <div className="stat-info">
+          <div className="stat-info" style={{ flex: 1, minWidth: 0 }}>
             <h4>Élèves</h4>
             <div className="stat-value">{d.total_students || s.total || 0}</div>
-            <div className="stat-change">{s.by_gender?.male || 0} garçons · {s.by_gender?.female || 0} filles</div>
+            {(() => {
+              const total = d.total_students || s.total || 0;
+              const male = s.by_gender?.male || 0;
+              const female = s.by_gender?.female || 0;
+              const pctMale = total > 0 ? Math.round((male / total) * 100) : 0;
+              const pctFemale = total > 0 ? Math.round((female / total) * 100) : 0;
+              return (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: 4 }}>
+                    <span style={{ color: '#2563eb', fontWeight: 600 }}>♂ {pctMale}%</span>
+                    <span style={{ color: '#be185d', fontWeight: 600 }}>♀ {pctFemale}%</span>
+                  </div>
+                  <div style={{ display: 'flex', height: 6, borderRadius: 999, overflow: 'hidden', background: '#fce7f3' }}>
+                    <div style={{ width: `${pctMale}%`, background: '#2563eb', transition: 'width 0.4s' }} />
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--gray-500)', marginTop: 3 }}>
+                    {male} garçons · {female} filles
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
         <div className="stat-card">

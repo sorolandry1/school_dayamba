@@ -31,6 +31,6 @@ def generate_qr_for_student(student):
 
 def decode_qr_data(qr_data):
     """Validate QR code data format."""
-    if qr_data and qr_data.startswith('STU-'):
+    if qr_data and ('NOM:' in qr_data or qr_data.startswith('STU-')):
         return qr_data
     return None

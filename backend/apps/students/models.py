@@ -23,6 +23,8 @@ class Student(models.Model):
     )
     qr_code = models.ImageField(upload_to='qrcodes/', blank=True, null=True)
     qr_code_data = models.CharField(max_length=100, unique=True, blank=True)
+    birth_place = models.CharField(max_length=100, blank=True, default='')
+    nationality = models.CharField(max_length=100, blank=True, default='')
     parent_name = models.CharField(max_length=200, blank=True, default='')
     parent_phone = models.CharField(max_length=20, blank=True, default='')
     parent_email = models.CharField(max_length=200, blank=True, default='')
@@ -37,6 +39,11 @@ class Student(models.Model):
     class Meta:
         db_table = 'students'
         ordering = ['last_name', 'first_name']
+        indexes = [
+            models.Index(fields=['classe', 'is_active'],   name='idx_student_classe_active'),
+            models.Index(fields=['payment_status'],         name='idx_student_payment_status'),
+            models.Index(fields=['last_name', 'first_name'],name='idx_student_fullname'),
+        ]
 
     def __str__(self):
         return f"{self.last_name} {self.first_name} ({self.matricule})"
@@ -49,5 +56,9 @@ class Student(models.Model):
         if not self.matricule:
             self.matricule = f"ELV-{uuid.uuid4().hex[:8].upper()}"
         if not self.qr_code_data:
-            self.qr_code_data = f"STU-{uuid.uuid4().hex[:12].upper()}"
+            dob = str(self.date_of_birth) if self.date_of_birth else ''
+            self.qr_code_data = (
+                f"NOM:{self.last_name}|PRENOM:{self.first_name}"
+                f"|DDN:{dob}|MAT:{self.matricule}"
+            )
         super().save(*args, **kwargs)

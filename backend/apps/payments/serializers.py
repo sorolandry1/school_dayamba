@@ -1,5 +1,21 @@
 from rest_framework import serializers
-from .models import Payment
+from .models import Payment, Expense
+
+
+class ExpenseSerializer(serializers.ModelSerializer):
+    recorded_by_name = serializers.SerializerMethodField()
+    category_label = serializers.CharField(source='get_category_display', read_only=True)
+
+    class Meta:
+        model = Expense
+        fields = ['id', 'label', 'category', 'category_label', 'amount', 'date',
+                  'description', 'recorded_by', 'recorded_by_name', 'created_at']
+        read_only_fields = ['recorded_by', 'created_at']
+
+    def get_recorded_by_name(self, obj):
+        if obj.recorded_by:
+            return obj.recorded_by.get_full_name()
+        return None
 
 
 class PaymentSerializer(serializers.ModelSerializer):

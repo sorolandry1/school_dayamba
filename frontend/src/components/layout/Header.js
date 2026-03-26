@@ -6,12 +6,15 @@ const pageTitles = {
   '/dashboard': 'Tableau de Bord',
   '/students': 'Gestion des Élèves',
   '/classes': 'Gestion des Classes',
-  '/grades': 'Gestion des Notes',
+  '/teachers': 'Gestion des Professeurs',
+  '/bulletins': 'Bulletins',
+  '/grades': 'Saisie des Notes',
   '/attendance': 'Suivi des Présences',
   '/payments': 'Gestion Financière',
   '/reports': 'Rapports & Statistiques',
-  '/teacher': 'Espace Professeur',
-  '/teacher/grades': 'Saisie des Notes',
+  '/users': 'Gestion des Utilisateurs',
+  '/teacher': 'Mon Espace Professeur',
+  '/teacher/grades': 'Mes Bulletins',
   '/scan': 'Scanner de Présence',
 };
 

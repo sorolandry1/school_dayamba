@@ -7,6 +7,8 @@ from django.db.models import Count, Q
 from apps.users.permissions import IsAdminOrReadOnly
 from apps.students.models import Student
 from utils.sms_service import send_sms
+from utils.email_service import send_email
+from utils.whatsapp_service import send_whatsapp_template
 from .models import Attendance
 from .serializers import AttendanceSerializer, ScanQRSerializer
 import logging
@@ -69,14 +71,31 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 attendance.status = 'LATE'
                 attendance.save()
 
-            # Send SMS to parent
+            # Notify parent: SMS + WhatsApp + Email
+            arrival_msg = (
+                f"Bonjour, votre enfant {student.first_name} "
+                f"est arrivé à l'école à {current_time.strftime('%H:%M')}. "
+                f"Bonne journée."
+            )
             if student.parent_phone:
-                message = (
-                    f"Bonjour, votre enfant {student.first_name} "
-                    f"est arrivé à l'école à {current_time.strftime('%H:%M')}. "
-                    f"Bonne journée."
+                send_sms(student.parent_phone, arrival_msg)
+                send_whatsapp_template(
+                    student.parent_phone, 'arrival',
+                    {
+                        'parent_name': student.parent_name or 'Parent',
+                        'student_name': student.full_name,
+                        'time': current_time.strftime('%H:%M'),
+                    },
                 )
-                send_sms(student.parent_phone, message)
+            if getattr(student, 'parent_email', None):
+                send_email(
+                    to=student.parent_email,
+                    template='custom',
+                    context={
+                        'subject': f'Arrivée de {student.first_name} à l\'école',
+                        'body': arrival_msg,
+                    },
+                )
 
             logger.info(f"Check-in: {student.full_name} à {current_time}")
             return Response({
@@ -102,13 +121,30 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             attendance.check_out = current_time
             attendance.save()
 
-            # Send SMS
+            # Notify parent: SMS + WhatsApp + Email on checkout
+            departure_msg = (
+                f"{student.first_name} a quitté l'école à "
+                f"{current_time.strftime('%H:%M')}. Merci."
+            )
             if student.parent_phone:
-                message = (
-                    f"{student.first_name} a quitté l'école à "
-                    f"{current_time.strftime('%H:%M')}. Merci."
+                send_sms(student.parent_phone, departure_msg)
+                send_whatsapp_template(
+                    student.parent_phone, 'departure',
+                    {
+                        'parent_name': student.parent_name or 'Parent',
+                        'student_name': student.full_name,
+                        'time': current_time.strftime('%H:%M'),
+                    },
                 )
-                send_sms(student.parent_phone, message)
+            if getattr(student, 'parent_email', None):
+                send_email(
+                    to=student.parent_email,
+                    template='custom',
+                    context={
+                        'subject': f'Départ de {student.first_name}',
+                        'body': departure_msg,
+                    },
+                )
 
             logger.info(f"Check-out: {student.full_name} à {current_time}")
             return Response({

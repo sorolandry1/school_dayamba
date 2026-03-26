@@ -2,8 +2,30 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import JsonResponse
+from django.utils import timezone
+from django.db import connection
+
+
+def health_check(request):
+    """Lightweight health probe for uptime monitoring."""
+    try:
+        connection.ensure_connection()
+        db_ok = True
+    except Exception:
+        db_ok = False
+
+    status_code = 200 if db_ok else 503
+    return JsonResponse({
+        'status': 'ok' if db_ok else 'degraded',
+        'timestamp': timezone.now().isoformat(),
+        'database': 'ok' if db_ok else 'error',
+        'version': '1.0.0',
+    }, status=status_code)
+
 
 urlpatterns = [
+    path('api/health/', health_check, name='health_check'),
     path('admin/', admin.site.urls),
     path('api/auth/', include('apps.users.urls')),
     path('api/students/', include('apps.students.urls')),

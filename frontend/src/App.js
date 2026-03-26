@@ -15,6 +15,16 @@ import AttendanceScanner from './pages/AttendanceScanner';
 import Payments from './pages/Payments';
 import Reports from './pages/Reports';
 import TeacherDashboard from './pages/TeacherDashboard';
+import Teachers from './pages/Teachers';
+import Bulletins from './pages/Bulletins';
+import StudentDetail from './pages/StudentDetail';
+import Users from './pages/Users';
+import TeacherProfile from './pages/TeacherProfile';
+import ActivityLogs from './pages/ActivityLogs';
+import Subjects from './pages/Subjects';
+import Expenses from './pages/Expenses';
+import Communications from './pages/Communications';
+import LessonLog from './pages/LessonLog';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, isAuthenticated } = useAuth();
@@ -52,6 +62,14 @@ function AppRoutes() {
         <Route path="/attendance" element={<AttendanceScanner />} />
         <Route path="/payments" element={<Payments />} />
         <Route path="/reports" element={<Reports />} />
+        <Route path="/teachers" element={<Teachers />} />
+        <Route path="/bulletins" element={<Bulletins />} />
+        <Route path="/students/:id" element={<StudentDetail />} />
+        <Route path="/users" element={<Users />} />
+        <Route path="/subjects" element={<Subjects />} />
+        <Route path="/logs" element={<ActivityLogs />} />
+        <Route path="/expenses" element={<Expenses />} />
+        <Route path="/communications" element={<Communications />} />
       </Route>
 
       {/* Teacher routes */}
@@ -62,6 +80,8 @@ function AppRoutes() {
       }>
         <Route path="/teacher" element={<TeacherDashboard />} />
         <Route path="/teacher/grades" element={<GradesManagement />} />
+        <Route path="/teacher/profile" element={<TeacherProfile />} />
+        <Route path="/teacher/lessons" element={<LessonLog />} />
       </Route>
 
       {/* Agent routes */}

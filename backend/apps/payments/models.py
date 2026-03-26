@@ -2,6 +2,34 @@ from django.db import models
 from django.utils import timezone
 
 
+class Expense(models.Model):
+    class Category(models.TextChoices):
+        SALAIRES = 'SALAIRES', 'Salaires & Charges'
+        FOURNITURES = 'FOURNITURES', 'Fournitures scolaires'
+        MAINTENANCE = 'MAINTENANCE', 'Entretien & Maintenance'
+        SERVICES = 'SERVICES', 'Services & Abonnements'
+        TRANSPORT = 'TRANSPORT', 'Transport'
+        EVENEMENTS = 'EVENEMENTS', 'Événements & Sorties'
+        AUTRE = 'AUTRE', 'Autre'
+
+    label = models.CharField(max_length=200)
+    category = models.CharField(max_length=20, choices=Category.choices, default=Category.AUTRE)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateField(default=timezone.now)
+    description = models.TextField(blank=True, default='')
+    recorded_by = models.ForeignKey(
+        'users.User', on_delete=models.SET_NULL, null=True, related_name='recorded_expenses'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'expenses'
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.label} — {self.amount} FCFA ({self.date})"
+
+
 class Payment(models.Model):
     class Status(models.TextChoices):
         PAID = 'PAID', 'Payé'

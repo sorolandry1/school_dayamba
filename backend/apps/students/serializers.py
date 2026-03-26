@@ -10,6 +10,7 @@ class StudentListSerializer(serializers.ModelSerializer):
         model = Student
         fields = ['id', 'first_name', 'last_name', 'full_name', 'matricule',
                   'classe', 'classe_name', 'gender', 'payment_status', 'is_active',
+                  'date_of_birth', 'birth_place', 'nationality', 'parent_name',
                   'parent_phone', 'qr_code_data']
 
 
@@ -33,5 +34,6 @@ class StudentDetailSerializer(serializers.ModelSerializer):
 class StudentCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Student
-        fields = ['first_name', 'last_name', 'date_of_birth', 'gender',
-                  'classe', 'parent_name', 'parent_phone', 'parent_email', 'address']
+        fields = ['first_name', 'last_name', 'date_of_birth', 'birth_place',
+                  'nationality', 'gender', 'classe', 'parent_name', 'parent_phone',
+                  'parent_email', 'address']

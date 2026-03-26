@@ -1,5 +1,20 @@
 from rest_framework import serializers
-from .models import Teacher
+from .models import Teacher, LessonLog
+
+
+class LessonLogSerializer(serializers.ModelSerializer):
+    teacher_name = serializers.CharField(source='teacher.full_name', read_only=True)
+    subject_name = serializers.CharField(source='subject.name', read_only=True)
+    classe_name = serializers.CharField(source='subject.classe.name', read_only=True)
+
+    class Meta:
+        model = LessonLog
+        fields = [
+            'id', 'teacher', 'teacher_name', 'subject', 'subject_name', 'classe_name',
+            'date', 'topic', 'objectives', 'content_covered', 'homework',
+            'progression_percent', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['teacher', 'created_at', 'updated_at']
 
 
 class TeacherSerializer(serializers.ModelSerializer):

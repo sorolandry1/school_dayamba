@@ -1,6 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
-import { FiPlus, FiSearch, FiDollarSign } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiDollarSign, FiEdit2, FiTrash2, FiPrinter } from 'react-icons/fi';
+
+const emptyForm = {
+  student: '', amount: '', payment_type: 'SCOLARITE',
+  status: 'PAID', due_date: '', notes: ''
+};
+
+const TYPE_LABELS = {
+  INSCRIPTION: 'Inscription', SCOLARITE: 'Scolarité',
+  EXAMEN: 'Examen', AUTRE: 'Autre'
+};
 
 function Payments() {
   const [payments, setPayments] = useState([]);
@@ -9,14 +19,13 @@ function Payments() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [students, setStudents] = useState([]);
-  const [form, setForm] = useState({
-    student: '', amount: '', payment_type: 'SCOLARITE', status: 'PAID', due_date: '', notes: ''
-  });
+  const [form, setForm] = useState(emptyForm);
 
   const fetchPayments = useCallback(async () => {
     try {
-      let url = '/payments/?';
+      let url = '/payments/?ordering=-payment_date&';
       if (search) url += `search=${search}&`;
       if (filterStatus) url += `status=${filterStatus}&`;
       const [payRes, statsRes] = await Promise.all([
@@ -35,14 +44,73 @@ function Payments() {
     api.get('/students/?page_size=1000').then(r => setStudents(r.data.results || r.data)).catch(() => {});
   }, []);
 
+  const openCreate = () => { setEditing(null); setForm(emptyForm); setShowModal(true); };
+
+  const openEdit = (p) => {
+    setEditing(p);
+    setForm({
+      student: p.student,
+      amount: p.amount,
+      payment_type: p.payment_type,
+      status: p.status,
+      due_date: p.due_date || '',
+      notes: p.notes || '',
+    });
+    setShowModal(true);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/payments/', form);
+      if (editing) {
+        await api.put(`/payments/${editing.id}/`, form);
+      } else {
+        await api.post('/payments/', form);
+      }
       setShowModal(false);
-      setForm({ student: '', amount: '', payment_type: 'SCOLARITE', status: 'PAID', due_date: '', notes: '' });
       fetchPayments();
     } catch (err) { alert('Erreur: ' + JSON.stringify(err.response?.data)); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Supprimer ce paiement ?')) return;
+    await api.delete(`/payments/${id}/`);
+    fetchPayments();
+  };
+
+  const printReceipt = (p) => {
+    const studentName = p.student_name || '-';
+    const w = window.open('', '_blank', 'width=600,height=700');
+    w.document.write(`
+      <html><head><title>Reçu ${p.receipt_number}</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 40px; color: #1a1a1a; }
+        h1 { color: #1a365d; font-size: 22px; text-align: center; margin-bottom: 4px; }
+        .subtitle { text-align: center; color: #4a5568; margin-bottom: 30px; }
+        .divider { border-top: 2px solid #e2e8f0; margin: 20px 0; }
+        .row { display: flex; justify-content: space-between; margin: 10px 0; }
+        .label { color: #718096; font-size: 14px; }
+        .value { font-weight: bold; font-size: 14px; }
+        .amount { font-size: 24px; font-weight: 900; color: #2b6cb0; text-align: center; margin: 20px 0; }
+        .footer { text-align: center; color: #a0aec0; font-size: 12px; margin-top: 40px; }
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; background: #c6f6d5; color: #276749; font-size: 12px; }
+      </style></head><body>
+      <h1>SchoolPro — REÇU DE PAIEMENT</h1>
+      <div class="subtitle">Reçu N° <strong>${p.receipt_number}</strong></div>
+      <div class="divider"></div>
+      <div class="row"><span class="label">Élève</span><span class="value">${studentName}</span></div>
+      <div class="row"><span class="label">Type de paiement</span><span class="value">${TYPE_LABELS[p.payment_type] || p.payment_type}</span></div>
+      <div class="row"><span class="label">Date</span><span class="value">${new Date(p.payment_date).toLocaleDateString('fr-FR')}</span></div>
+      <div class="row"><span class="label">Statut</span><span class="value"><span class="badge">${p.status}</span></span></div>
+      ${p.notes ? `<div class="row"><span class="label">Notes</span><span class="value">${p.notes}</span></div>` : ''}
+      <div class="divider"></div>
+      <div class="amount">${Number(p.amount).toLocaleString()} FCFA</div>
+      <div class="divider"></div>
+      <div class="footer">SchoolPro · Gestion Scolaire · Document généré le ${new Date().toLocaleDateString('fr-FR')}</div>
+      </body></html>
+    `);
+    w.document.close();
+    w.print();
   };
 
   const statusBadge = (status) => {
@@ -58,7 +126,7 @@ function Payments() {
           <h2>Gestion Financière</h2>
           <p>Suivi des paiements et frais scolaires</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+        <button className="btn btn-primary" onClick={openCreate}>
           <FiPlus /> Nouveau paiement
         </button>
       </div>
@@ -69,7 +137,7 @@ function Payments() {
           <div className="stat-info">
             <h4>Total collecté</h4>
             <div className="stat-value">{Number(stats.total_collected || 0).toLocaleString()}</div>
-            <div className="stat-change">FCFA</div>
+            <div className="stat-change">FCFA — {stats.count_paid || 0} paiements</div>
           </div>
         </div>
         <div className="stat-card">
@@ -93,13 +161,14 @@ function Payments() {
       <div className="filters-bar">
         <div className="search-input">
           <FiSearch size={16} />
-          <input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} />
+          <input placeholder="Rechercher élève ou N° reçu..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
         <select className="form-control" style={{ width: 160 }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
           <option value="">Tout statut</option>
           <option value="PAID">Payé</option>
           <option value="PENDING">En attente</option>
           <option value="OVERDUE">En retard</option>
+          <option value="PARTIAL">Partiel</option>
         </select>
       </div>
 
@@ -114,20 +183,30 @@ function Payments() {
                   <th>Type</th>
                   <th>Montant</th>
                   <th>Date</th>
+                  <th>Échéance</th>
                   <th>Statut</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {payments.length === 0 ? (
-                  <tr><td colSpan="6" style={{ textAlign: 'center', padding: 40, color: '#98a2b3' }}>Aucun paiement trouvé</td></tr>
+                  <tr><td colSpan="8" style={{ textAlign: 'center', padding: 40, color: '#98a2b3' }}>Aucun paiement trouvé</td></tr>
                 ) : payments.map(p => (
                   <tr key={p.id}>
                     <td><strong>{p.receipt_number}</strong></td>
                     <td>{p.student_name}</td>
-                    <td>{p.payment_type}</td>
+                    <td>{TYPE_LABELS[p.payment_type] || p.payment_type}</td>
                     <td style={{ fontWeight: 700 }}>{Number(p.amount).toLocaleString()} FCFA</td>
                     <td>{new Date(p.payment_date).toLocaleDateString('fr-FR')}</td>
+                    <td>{p.due_date ? new Date(p.due_date).toLocaleDateString('fr-FR') : '-'}</td>
                     <td>{statusBadge(p.status)}</td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button className="btn btn-sm btn-secondary" title="Imprimer reçu" onClick={() => printReceipt(p)}><FiPrinter size={14} /></button>
+                        <button className="btn btn-sm btn-secondary" title="Modifier" onClick={() => openEdit(p)}><FiEdit2 size={14} /></button>
+                        <button className="btn btn-sm btn-danger" title="Supprimer" onClick={() => handleDelete(p.id)}><FiTrash2 size={14} /></button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -140,7 +219,7 @@ function Payments() {
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Enregistrer un paiement</h3>
+              <h3>{editing ? 'Modifier le paiement' : 'Enregistrer un paiement'}</h3>
               <button className="btn-icon" onClick={() => setShowModal(false)}>&times;</button>
             </div>
             <form onSubmit={handleSubmit}>
@@ -178,7 +257,9 @@ function Payments() {
                     <select className="form-control" value={form.status}
                       onChange={e => setForm({...form, status: e.target.value})}>
                       <option value="PAID">Payé</option>
+                      <option value="PARTIAL">Partiel</option>
                       <option value="PENDING">En attente</option>
+                      <option value="OVERDUE">En retard</option>
                     </select>
                   </div>
                   <div className="form-group">
@@ -195,7 +276,7 @@ function Payments() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Annuler</button>
-                <button type="submit" className="btn btn-primary">Enregistrer</button>
+                <button type="submit" className="btn btn-primary">{editing ? 'Modifier' : 'Enregistrer'}</button>
               </div>
             </form>
           </div>

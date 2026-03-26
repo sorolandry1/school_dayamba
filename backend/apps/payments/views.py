@@ -3,8 +3,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Sum, Count, Q
 from apps.users.permissions import IsAdmin, IsAdminOrReadOnly
-from .models import Payment
-from .serializers import PaymentSerializer
+from utils.sms_service import send_sms
+from utils.email_service import send_bulk_email
+from .models import Payment, Expense
+from .serializers import PaymentSerializer, ExpenseSerializer
 
 
 class PaymentViewSet(viewsets.ModelViewSet):
@@ -15,8 +17,33 @@ class PaymentViewSet(viewsets.ModelViewSet):
     search_fields = ['student__first_name', 'student__last_name', 'receipt_number']
     ordering_fields = ['payment_date', 'amount']
 
+    def _notify_parent(self, payment):
+        student = payment.student
+        if not student.parent_phone:
+            return
+        if payment.status == 'OVERDUE':
+            msg = (
+                f"Bonjour, le paiement de {int(payment.amount):,} FCFA "
+                f"({payment.get_payment_type_display()}) pour votre enfant "
+                f"{student.full_name} est en retard. "
+                f"Merci de régulariser rapidement."
+            )
+            send_sms(student.parent_phone, msg)
+        elif payment.status == 'PAID':
+            msg = (
+                f"Bonjour, le paiement de {int(payment.amount):,} FCFA "
+                f"({payment.get_payment_type_display()}) pour {student.full_name} "
+                f"a bien été reçu. Reçu N°: {payment.receipt_number}. Merci."
+            )
+            send_sms(student.parent_phone, msg)
+
     def perform_create(self, serializer):
-        serializer.save(recorded_by=self.request.user)
+        payment = serializer.save(recorded_by=self.request.user)
+        self._notify_parent(payment)
+
+    def perform_update(self, serializer):
+        payment = serializer.save()
+        self._notify_parent(payment)
 
     @action(detail=False, methods=['get'])
     def stats(self, request):
@@ -48,4 +75,125 @@ class PaymentViewSet(viewsets.ModelViewSet):
         return Response({
             'payments': PaymentSerializer(payments, many=True).data,
             'total_paid': total,
+        })
+
+
+class ExpenseViewSet(viewsets.ModelViewSet):
+    queryset = Expense.objects.select_related('recorded_by').all()
+    serializer_class = ExpenseSerializer
+    permission_classes = [IsAdmin]
+    filterset_fields = ['category']
+    search_fields = ['label', 'description']
+    ordering_fields = ['date', 'amount']
+
+    def perform_create(self, serializer):
+        serializer.save(recorded_by=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        from django.db.models import Sum as _Sum
+        qs = Expense.objects.all()
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+        if date_from:
+            qs = qs.filter(date__gte=date_from)
+        if date_to:
+            qs = qs.filter(date__lte=date_to)
+
+        total = qs.aggregate(t=_Sum('amount'))['t'] or 0
+        by_category = list(
+            qs.values('category')
+            .annotate(total=_Sum('amount'), count=Count('id'))
+            .order_by('-total')
+        )
+        # Add display labels
+        cat_map = {k: v for k, v in Expense.Category.choices}
+        for row in by_category:
+            row['category_label'] = cat_map.get(row['category'], row['category'])
+
+        return Response({'total': float(total), 'by_category': by_category})
+
+
+class BroadcastSMSView(viewsets.ViewSet):
+    """Send SMS to all parents of a given class or all active students."""
+    permission_classes = [IsAdmin]
+
+    @action(detail=False, methods=['post'])
+    def send(self, request):
+        message = request.data.get('message', '').strip()
+        classe_id = request.data.get('classe_id')
+
+        if not message:
+            return Response({'error': 'Le message est requis.'}, status=400)
+
+        from apps.students.models import Student
+        students_qs = Student.objects.filter(is_active=True, parent_phone__isnull=False).exclude(parent_phone='')
+        if classe_id:
+            students_qs = students_qs.filter(classe_id=classe_id)
+
+        sent = 0
+        failed = 0
+        for student in students_qs:
+            ok = send_sms(student.parent_phone, message)
+            if ok:
+                sent += 1
+            else:
+                failed += 1
+
+        from apps.users.models import log_activity
+        log_activity(
+            request.user, 'LOGIN',
+            f"Broadcast SMS envoyé à {sent} parents (classe_id={classe_id or 'tous'})",
+            request
+        )
+
+        return Response({
+            'sent': sent,
+            'failed': failed,
+            'total': sent + failed,
+            'message': f'{sent} SMS envoyés avec succès.',
+        })
+
+    @action(detail=False, methods=['post'])
+    def email(self, request):
+        """Send broadcast email to all parents of a class or all active students."""
+        subject = request.data.get('subject', '').strip()
+        body = request.data.get('message', '').strip()
+        classe_id = request.data.get('classe_id')
+
+        if not subject or not body:
+            return Response({'error': 'Sujet et message requis.'}, status=400)
+
+        from apps.students.models import Student
+        students_qs = (
+            Student.objects
+            .filter(is_active=True)
+            .exclude(parent_email__isnull=True)
+            .exclude(parent_email='')
+        )
+        if classe_id:
+            students_qs = students_qs.filter(classe_id=classe_id)
+
+        recipients = [
+            {
+                'to': s.parent_email,
+                'parent_name': s.parent_name or 'Parent',
+                'subject': subject,
+                'body': body,
+            }
+            for s in students_qs
+        ]
+
+        result = send_bulk_email(recipients, template='custom')
+
+        from apps.users.models import log_activity
+        log_activity(
+            request.user, 'LOGIN',
+            f"Broadcast email envoyé à {result['sent']} parents (classe_id={classe_id or 'tous'})",
+            request
+        )
+
+        return Response({
+            **result,
+            'message': f"{result['sent']} email(s) envoyé(s) avec succès.",
         })

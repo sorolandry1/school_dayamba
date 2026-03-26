@@ -7,6 +7,7 @@ const LEVELS_ORDER = ['6ème', '5ème', '4ème', '3ème', '2nde', '1ère', 'Term
 export default function Classes() {
   const [levels, setLevels]         = useState([]);
   const [classes, setClasses]       = useState([]);
+  const [classStats, setClassStats] = useState({});  // { classeId: { average, absent_rate, ... } }
   const [students, setStudents]     = useState({});   // { classeId: [...] }
   const [openLevel, setOpenLevel]   = useState(null);
   const [openClasse, setOpenClasse] = useState(null);
@@ -19,13 +20,19 @@ export default function Classes() {
 
   const fetchData = async () => {
     try {
-      const [levelsRes, classesRes] = await Promise.all([
+      const [levelsRes, classesRes, statsRes] = await Promise.all([
         api.get('/classes/levels/').catch(() => ({ data: [] })),
         api.get('/classes/?page_size=100').catch(() => ({ data: { results: [], count: 0 } })),
+        api.get('/reports/class_stats/').catch(() => ({ data: [] })),
       ]);
       setLevels(levelsRes.data?.results || levelsRes.data || []);
       const cls = classesRes.data?.results || classesRes.data || [];
       setClasses(cls);
+      // Index class stats by classe_id
+      const statsArr = statsRes.data?.results || statsRes.data || [];
+      const statsMap = {};
+      statsArr.forEach(s => { statsMap[s.classe_id] = s; });
+      setClassStats(statsMap);
     } catch (e) {
       console.error(e);
     } finally {
@@ -36,10 +43,10 @@ export default function Classes() {
   const fetchStudentsForClasse = async (classeId) => {
     if (students[classeId]) return;
     try {
-      const res = await api.get(`/students/?classe=${classeId}&page_size=100`);
+      const res = await api.get(`/students/class_summary/?classe_id=${classeId}`);
       setStudents(prev => ({
         ...prev,
-        [classeId]: res.data?.results || res.data || [],
+        [classeId]: res.data || [],
       }));
     } catch (e) {
       console.error(e);
@@ -183,6 +190,7 @@ export default function Classes() {
                     {levelClasses.map(classe => {
                       const isClasseOpen   = openClasse === classe.id;
                       const classeStudents = students[classe.id] || [];
+                      const cs = classStats[classe.id];
 
                       return (
                         <div key={classe.id} style={{
@@ -210,20 +218,33 @@ export default function Classes() {
                               <FiBook size={16} color="var(--primary-600)" />
                               <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{classe.name}</span>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                               <span style={{ color: 'var(--gray-500)', fontSize: '0.82rem' }}>
                                 <FiUsers size={13} style={{ verticalAlign: 'middle' }} />&nbsp;
                                 {isClasseOpen
                                   ? classeStudents.length
                                   : (classe.student_count ?? '...')} élève(s)
                               </span>
-                              <span style={{
-                                fontSize: '0.75rem', color: 'var(--gray-400)',
-                                background: 'var(--gray-100)',
-                                padding: '2px 8px', borderRadius: 999
-                              }}>
-                                Capacité : {classe.capacity ?? 50}
-                              </span>
+                              {cs?.class_average != null && (
+                                <span style={{
+                                  fontSize: '0.78rem', fontWeight: 700,
+                                  color: cs.class_average >= 10 ? '#065f46' : cs.class_average >= 7 ? '#92400e' : '#991b1b',
+                                  background: cs.class_average >= 10 ? '#d1fae5' : cs.class_average >= 7 ? '#fef3c7' : '#fee2e2',
+                                  padding: '3px 10px', borderRadius: 999,
+                                }}>
+                                  Moy. {Number(cs.class_average).toFixed(1)}/20
+                                </span>
+                              )}
+                              {cs?.absent_rate != null && (
+                                <span style={{
+                                  fontSize: '0.78rem', fontWeight: 700,
+                                  color: cs.absent_rate >= 20 ? '#991b1b' : cs.absent_rate >= 10 ? '#92400e' : '#065f46',
+                                  background: cs.absent_rate >= 20 ? '#fee2e2' : cs.absent_rate >= 10 ? '#fef3c7' : '#d1fae5',
+                                  padding: '3px 10px', borderRadius: 999,
+                                }}>
+                                  {Math.round(cs.absent_rate)}% absents
+                                </span>
+                              )}
                             </div>
                           </div>
 
@@ -246,6 +267,8 @@ export default function Classes() {
                                       <th style={thStyle}>Nom & Prénom</th>
                                       <th style={thStyle}>Genre</th>
                                       <th style={thStyle}>Contact Parent</th>
+                                      <th style={{ ...thStyle, textAlign: 'center' }}>Moyenne</th>
+                                      <th style={{ ...thStyle, textAlign: 'center' }}>Absences</th>
                                       <th style={thStyle}>Paiement</th>
                                       <th style={{ ...thStyle, textAlign: 'center' }}>Bulletin</th>
                                     </tr>
@@ -283,6 +306,50 @@ export default function Classes() {
                                         </td>
                                         <td style={{ ...tdStyle, fontSize: '0.82rem', color: 'var(--gray-600)' }}>
                                           {student.parent_phone || '—'}
+                                        </td>
+                                        <td style={{ ...tdStyle, textAlign: 'center' }}>
+                                          {student.average != null ? (
+                                            <span style={{
+                                              fontWeight: 700,
+                                              fontSize: '0.88rem',
+                                              color: student.average >= 10
+                                                ? '#065f46'
+                                                : student.average >= 7
+                                                  ? '#92400e'
+                                                  : '#991b1b',
+                                              background: student.average >= 10
+                                                ? '#d1fae5'
+                                                : student.average >= 7
+                                                  ? '#fef3c7'
+                                                  : '#fee2e2',
+                                              padding: '2px 8px',
+                                              borderRadius: 999,
+                                            }}>
+                                              {student.average}/20
+                                            </span>
+                                          ) : (
+                                            <span style={{ color: 'var(--gray-400)', fontSize: '0.8rem' }}>—</span>
+                                          )}
+                                        </td>
+                                        <td style={{ ...tdStyle, textAlign: 'center' }}>
+                                          {student.absent_count > 0 ? (
+                                            <span style={{
+                                              fontWeight: 600,
+                                              fontSize: '0.82rem',
+                                              color: student.absent_count >= 5 ? '#991b1b' : '#92400e',
+                                              background: student.absent_count >= 5 ? '#fee2e2' : '#fef3c7',
+                                              padding: '2px 8px',
+                                              borderRadius: 999,
+                                            }}>
+                                              {student.absent_count}j
+                                            </span>
+                                          ) : (
+                                            <span style={{
+                                              color: '#065f46', background: '#d1fae5',
+                                              fontSize: '0.82rem', fontWeight: 600,
+                                              padding: '2px 8px', borderRadius: 999,
+                                            }}>0j</span>
+                                          )}
                                         </td>
                                         <td style={tdStyle}>
                                           {paymentBadge(student.payment_status)}
