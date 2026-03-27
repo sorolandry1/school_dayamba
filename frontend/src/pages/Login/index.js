@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 import { FiLock, FiUser } from 'react-icons/fi';
 
 function Login() {
@@ -10,6 +11,7 @@ function Login() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -21,7 +23,7 @@ function Login() {
       else if (user.role === 'AGENT') navigate('/scan');
       else navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.error || 'Identifiants invalides.');
+      setError(err.response?.data?.error || t('login.error_default'));
     } finally {
       setLoading(false);
     }
@@ -37,16 +39,16 @@ function Login() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             margin: '0 auto 24px', fontSize: '2rem', fontWeight: 800, color: 'white'
           }}>SP</div>
-          <h2>SchoolPro</h2>
-          <p>Plateforme numérique de gestion scolaire — Optimisez l'administration de votre établissement</p>
+          <h2>{t('app.name')}</h2>
+          <p>{t('app.description')}</p>
           <div style={{
             marginTop: 48, display: 'flex', gap: 32,
             justifyContent: 'center', flexWrap: 'wrap'
           }}>
             {[
-              { n: '500+', l: 'Élèves gérés' },
-              { n: '50+', l: 'Professeurs' },
-              { n: '99.5%', l: 'Disponibilité' },
+              { n: '500+', l: t('login.stats_students') },
+              { n: '50+',  l: t('login.stats_teachers') },
+              { n: '99.5%', l: t('login.stats_uptime') },
             ].map((s, i) => (
               <div key={i} style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: '1.8rem', fontWeight: 800 }}>{s.n}</div>
@@ -59,33 +61,33 @@ function Login() {
 
       <div className="login-form-side">
         <form className="login-form" onSubmit={handleSubmit}>
-          <h1>Connexion</h1>
-          <p className="login-subtitle">Accédez à votre espace personnel</p>
+          <h1>{t('login.title')}</h1>
+          <p className="login-subtitle">{t('login.subtitle')}</p>
 
           {error && <div className="login-error">{error}</div>}
 
           <div className="form-group">
-            <label><FiUser size={14} style={{ marginRight: 6 }} />Nom d'utilisateur</label>
+            <label><FiUser size={14} style={{ marginRight: 6 }} />{t('login.username')}</label>
             <input
               type="text" className="form-control"
-              placeholder="Entrez votre identifiant"
+              placeholder={t('login.username_placeholder')}
               value={username} onChange={(e) => setUsername(e.target.value)}
               required autoFocus
             />
           </div>
 
           <div className="form-group">
-            <label><FiLock size={14} style={{ marginRight: 6 }} />Mot de passe</label>
+            <label><FiLock size={14} style={{ marginRight: 6 }} />{t('login.password')}</label>
             <input
               type="password" className="form-control"
-              placeholder="Entrez votre mot de passe"
+              placeholder={t('login.password_placeholder')}
               value={password} onChange={(e) => setPassword(e.target.value)}
               required
             />
           </div>
 
           <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Connexion...' : 'Se connecter'}
+            {loading ? t('login.loading') : t('login.submit')}
           </button>
 
           <div style={{ marginTop: 24, textAlign: 'center', fontSize: '0.8rem', color: '#98a2b3' }}>

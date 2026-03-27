@@ -1,0 +1,74 @@
+{
+  "app": {
+    "name": "SchoolPro",
+    "tagline": "Gestion Scolaire",
+    "description": "Plateforme numérique de gestion scolaire — Optimisez l'administration de votre établissement"
+  },
+  "login": {
+    "title": "Connexion",
+    "subtitle": "Accédez à votre espace personnel",
+    "username": "Nom d'utilisateur",
+    "username_placeholder": "Entrez votre identifiant",
+    "password": "Mot de passe",
+    "password_placeholder": "Entrez votre mot de passe",
+    "submit": "Se connecter",
+    "loading": "Connexion...",
+    "error_default": "Identifiants invalides.",
+    "stats_students": "Élèves gérés",
+    "stats_teachers": "Professeurs",
+    "stats_uptime": "Disponibilité"
+  },
+  "sidebar": {
+    "sections": {
+      "dashboard": "Tableau de bord",
+      "etablissement": "Établissement",
+      "scolarite": "Scolarité",
+      "administration": "Administration",
+      "mon_espace": "Mon espace",
+      "pedagogie": "Pédagogie",
+      "presences": "Présences"
+    },
+    "links": {
+      "dashboard": "Tableau de bord",
+      "students": "Élèves",
+      "teachers": "Professeurs",
+      "classes": "Classes",
+      "bulletins": "Bulletins",
+      "attendance": "Présences",
+      "payments": "Paiements",
+      "reports": "Rapports",
+      "communications": "Communications",
+      "subjects": "Matières",
+      "users": "Utilisateurs",
+      "logs": "Journal d'activité",
+      "scan": "Scanner QR",
+      "attendance_today": "Présences du jour",
+      "my_profile": "Mon profil",
+      "grades": "Saisie des notes",
+      "lessons": "Cahier de texte"
+    },
+    "logout": "Déconnexion",
+    "roles": {
+      "DIRECTOR": "Directeur",
+      "TEACHER": "Professeur",
+      "AGENT": "Agent d'accueil",
+      "ADMIN": "Administrateur"
+    }
+  },
+  "common": {
+    "loading": "Chargement...",
+    "error": "Erreur",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "confirm": "Confirmer",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "add": "Ajouter",
+    "search": "Rechercher",
+    "close": "Fermer",
+    "back": "Retour",
+    "yes": "Oui",
+    "no": "Non",
+    "unknown": "—"
+  }
+}

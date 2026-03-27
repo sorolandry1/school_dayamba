@@ -1,0 +1,74 @@
+{
+  "app": {
+    "name": "SchoolPro",
+    "tagline": "Lekɔl Naan-tʋʋmde",
+    "description": "Lekɔl naan-tʋʋmd yɩɩda — F sõng y lekɔl tʋʋmde"
+  },
+  "login": {
+    "title": "Kẽngo",
+    "subtitle": "F kẽ yɩɩda",
+    "username": "Yẽ-yõore",
+    "username_placeholder": "F tɩɩs yɩɩda yõore",
+    "password": "Gũu-goama",
+    "password_placeholder": "F tɩɩs gũu-goama",
+    "submit": "Kẽ",
+    "loading": "Kẽngo...",
+    "error_default": "Yẽ-yõore wall.",
+    "stats_students": "Karemsé",
+    "stats_teachers": "Karens-damba",
+    "stats_uptime": "Tɩɩg-zemsgẽ"
+  },
+  "sidebar": {
+    "sections": {
+      "dashboard": "Yɩɩd-paalem",
+      "etablissement": "Lekɔl roogẽ",
+      "scolarite": "Karem-yɛleme",
+      "administration": "Naan-tʋʋmde",
+      "mon_espace": "Mam yɩɩda",
+      "pedagogie": "Karem-tʋʋmde",
+      "presences": "Zĩndi"
+    },
+    "links": {
+      "dashboard": "Yɩɩd-paalem",
+      "students": "Karemsé",
+      "teachers": "Karens-damba",
+      "classes": "Karem-rõose",
+      "bulletins": "Tɩɩsgo-sebre",
+      "attendance": "Zĩndi",
+      "payments": "Ligdi-yõore",
+      "reports": "Yɩɩd-sebre",
+      "communications": "Goamdsé",
+      "subjects": "Karem-yɛleme",
+      "users": "Ned-damba",
+      "logs": "Tʋʋmd-sebre",
+      "scan": "QR sẽeg",
+      "attendance_today": "Rõngo zĩndi",
+      "my_profile": "Mam yɩɩda",
+      "grades": "Tɩɩsgo-sẽeg",
+      "lessons": "Karem-gʋlse"
+    },
+    "logout": "Yi kẽngo",
+    "roles": {
+      "DIRECTOR": "Naan-soaba",
+      "TEACHER": "Karens-soaba",
+      "AGENT": "Kẽngo-soaba",
+      "ADMIN": "Naan-soaba"
+    }
+  },
+  "common": {
+    "loading": "Kõtãogo...",
+    "error": "Yell",
+    "save": "Maoogo",
+    "cancel": "Bas",
+    "confirm": "Gomde",
+    "delete": "Suɩgẽ",
+    "edit": "Feoog",
+    "add": "Tãogẽ",
+    "search": "Bãngẽ",
+    "close": "Kẽl",
+    "back": "Lebg",
+    "yes": "Yaa",
+    "no": "Ayo",
+    "unknown": "—"
+  }
+}
