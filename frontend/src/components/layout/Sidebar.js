@@ -7,7 +7,7 @@ import {
   FiHome, FiUsers, FiBook, FiClipboard, FiDollarSign,
   FiBarChart2, FiCamera, FiLogOut, FiGrid,
   FiFileText, FiShield, FiUserCheck, FiActivity, FiUser,
-  FiMessageSquare, FiEdit3, FiGlobe, FiCreditCard, FiSettings
+  FiMessageSquare, FiEdit3, FiGlobe, FiCreditCard, FiSettings, FiLayout
 } from 'react-icons/fi';
 
 function getModules() {
@@ -59,7 +59,10 @@ function Sidebar({ isOpen, onClose }) {
     ...(modules.expenses !== false ? [{ to: '/expenses', icon: <FiDollarSign />, label: t('sidebar.links.expenses') }] : []),
     { to: '/users', icon: <FiShield />, label: t('sidebar.links.users') },
     ...(modules.logs !== false ? [{ to: '/logs', icon: <FiActivity />, label: t('sidebar.links.logs') }] : []),
-    ...(user?.role === 'ADMIN' ? [{ to: '/super-admin', icon: <FiSettings />, label: t('sidebar.links.super_admin') }] : []),
+    ...(user?.role === 'ADMIN' ? [
+      { to: '/super-admin', icon: <FiSettings />, label: t('sidebar.links.super_admin') },
+      { to: '/document-editor', icon: <FiLayout />, label: 'Éditeur de documents' },
+    ] : []),
   ];
 
   // --- PROFESSEUR ---

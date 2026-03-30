@@ -27,6 +27,7 @@ import Communications from './pages/Communications';
 import LessonLog from './pages/LessonLog';
 import StudentCards from './pages/StudentCards';
 import SuperAdmin from './pages/SuperAdmin';
+import DocumentEditor from './pages/DocumentEditor';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, isAuthenticated } = useAuth();
@@ -74,6 +75,7 @@ function AppRoutes() {
         <Route path="/communications" element={<Communications />} />
         <Route path="/student-cards" element={<StudentCards />} />
         <Route path="/super-admin" element={<SuperAdmin />} />
+        <Route path="/document-editor" element={<DocumentEditor />} />
       </Route>
 
       {/* Teacher routes */}

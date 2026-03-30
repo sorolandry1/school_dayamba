@@ -15,12 +15,26 @@ from apps.subjects.models import Subject
 from apps.attendance.models import Attendance
 from apps.payments.models import Payment
 from apps.classes.models import Classe
-from utils.pdf_generator import generate_bulletin_pdf
+from utils.pdf_generator import (
+    generate_bulletin_pdf, generate_bulletin_pdf_templated,
+    generate_receipt_pdf_templated, generate_card_pdf_templated,
+)
 from django.db.models import Avg, Count, Q
 
 
 class BulletinPDFView(APIView):
     permission_classes = [IsAdminOrTeacher]
+
+    def _get_template_config(self, request):
+        from .models import DocumentTemplate
+        template_id = request.query_params.get('template_id')
+        if template_id:
+            try:
+                return DocumentTemplate.objects.get(id=template_id, document_type='bulletin').config
+            except DocumentTemplate.DoesNotExist:
+                pass
+        tmpl = DocumentTemplate.objects.filter(document_type='bulletin', is_default=True).first()
+        return tmpl.config if tmpl else None
 
     def get(self, request, student_id):
         try:
@@ -30,8 +44,12 @@ class BulletinPDFView(APIView):
 
         subjects = Subject.objects.filter(classe=student.classe)
         rankings_data = self._calculate_rankings(student)
+        template_config = self._get_template_config(request)
 
-        pdf_buffer = generate_bulletin_pdf(student, subjects, rankings_data)
+        if template_config:
+            pdf_buffer = generate_bulletin_pdf_templated(student, subjects, rankings_data, template_config)
+        else:
+            pdf_buffer = generate_bulletin_pdf(student, subjects, rankings_data)
 
         response = HttpResponse(pdf_buffer, content_type='application/pdf')
         response['Content-Disposition'] = (
@@ -84,6 +102,19 @@ class BulletinClassePDFView(APIView):
 
         subjects = Subject.objects.filter(classe=classe)
 
+        # Template support
+        from .models import DocumentTemplate
+        template_config = None
+        template_id = request.query_params.get('template_id')
+        if template_id:
+            tmpl = DocumentTemplate.objects.filter(id=template_id, document_type='bulletin').first()
+            if tmpl:
+                template_config = tmpl.config
+        else:
+            tmpl = DocumentTemplate.objects.filter(document_type='bulletin', is_default=True).first()
+            if tmpl:
+                template_config = tmpl.config
+
         # Pre-calculate rankings for all students once
         rankings_map = self._calculate_all_rankings(students, subjects)
 
@@ -91,7 +122,10 @@ class BulletinClassePDFView(APIView):
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
             for student in students:
                 rankings_data = rankings_map.get(student.id, {})
-                pdf_buffer = generate_bulletin_pdf(student, subjects, rankings_data)
+                if template_config:
+                    pdf_buffer = generate_bulletin_pdf_templated(student, subjects, rankings_data, template_config)
+                else:
+                    pdf_buffer = generate_bulletin_pdf(student, subjects, rankings_data)
                 filename = f"bulletin_{student.matricule}_{student.last_name}_{student.first_name}.pdf"
                 zf.writestr(filename, pdf_buffer.read())
 
@@ -548,3 +582,131 @@ class ClassStatsView(APIView):
             })
 
         return Response(result)
+
+
+# ────────────────────────────────────────────────────────────────
+# Document Template CRUD
+# ────────────────────────────────────────────────────────────────
+
+class DocumentTemplateListCreateView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        from .models import DocumentTemplate
+        from .serializers import DocumentTemplateSerializer
+        doc_type = request.query_params.get('document_type')
+        qs = DocumentTemplate.objects.all()
+        if doc_type:
+            qs = qs.filter(document_type=doc_type)
+        return Response(DocumentTemplateSerializer(qs, many=True).data)
+
+    def post(self, request):
+        from .models import DocumentTemplate
+        from .serializers import DocumentTemplateSerializer
+        ser = DocumentTemplateSerializer(data=request.data)
+        if ser.is_valid():
+            ser.save(created_by=request.user)
+            return Response(ser.data, status=201)
+        return Response(ser.errors, status=400)
+
+
+class DocumentTemplateDetailView(APIView):
+    permission_classes = [IsAdmin]
+
+    def _get_obj(self, pk):
+        from .models import DocumentTemplate
+        try:
+            return DocumentTemplate.objects.get(pk=pk)
+        except DocumentTemplate.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        from .serializers import DocumentTemplateSerializer
+        obj = self._get_obj(pk)
+        if not obj:
+            return Response({'error': 'Modèle introuvable.'}, status=404)
+        return Response(DocumentTemplateSerializer(obj).data)
+
+    def put(self, request, pk):
+        from .serializers import DocumentTemplateSerializer
+        obj = self._get_obj(pk)
+        if not obj:
+            return Response({'error': 'Modèle introuvable.'}, status=404)
+        ser = DocumentTemplateSerializer(obj, data=request.data, partial=True)
+        if ser.is_valid():
+            ser.save()
+            return Response(ser.data)
+        return Response(ser.errors, status=400)
+
+    def delete(self, request, pk):
+        obj = self._get_obj(pk)
+        if not obj:
+            return Response({'error': 'Modèle introuvable.'}, status=404)
+        obj.delete()
+        return Response(status=204)
+
+
+# ────────────────────────────────────────────────────────────────
+# Receipt & Card PDF with template support
+# ────────────────────────────────────────────────────────────────
+
+class ReceiptPDFView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request, payment_id):
+        try:
+            payment = Payment.objects.select_related(
+                'student', 'student__classe', 'recorded_by'
+            ).get(id=payment_id)
+        except Payment.DoesNotExist:
+            return Response({'error': 'Paiement non trouvé.'}, status=404)
+
+        from .models import DocumentTemplate
+        template_config = {}
+        template_id = request.query_params.get('template_id')
+        if template_id:
+            tmpl = DocumentTemplate.objects.filter(id=template_id, document_type='receipt').first()
+            if tmpl:
+                template_config = tmpl.config
+        else:
+            tmpl = DocumentTemplate.objects.filter(document_type='receipt', is_default=True).first()
+            if tmpl:
+                template_config = tmpl.config
+
+        pdf_buffer = generate_receipt_pdf_templated(payment, template_config)
+        response = HttpResponse(pdf_buffer, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="recu_{payment.receipt_number}.pdf"'
+        )
+        return response
+
+
+class StudentCardPDFView(APIView):
+    permission_classes = [IsAdminOrTeacher]
+
+    def get(self, request, student_id):
+        try:
+            student = Student.objects.select_related(
+                'classe', 'classe__academic_year'
+            ).get(id=student_id)
+        except Student.DoesNotExist:
+            return Response({'error': 'Élève non trouvé.'}, status=404)
+
+        from .models import DocumentTemplate
+        template_config = {}
+        template_id = request.query_params.get('template_id')
+        if template_id:
+            tmpl = DocumentTemplate.objects.filter(id=template_id, document_type='card').first()
+            if tmpl:
+                template_config = tmpl.config
+        else:
+            tmpl = DocumentTemplate.objects.filter(document_type='card', is_default=True).first()
+            if tmpl:
+                template_config = tmpl.config
+
+        pdf_buffer = generate_card_pdf_templated(student, template_config)
+        response = HttpResponse(pdf_buffer, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="carte_{student.matricule}.pdf"'
+        )
+        return response

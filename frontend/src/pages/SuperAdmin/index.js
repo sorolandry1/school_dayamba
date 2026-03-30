@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import {
   FiSettings, FiSliders, FiFileText, FiToggleRight, FiToggleLeft,
   FiSave, FiUpload, FiRefreshCw, FiAlertCircle, FiCheckCircle,
+  FiLayout, FiArrowRight,
 } from 'react-icons/fi';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -235,9 +237,42 @@ function ModulesTab({ settings, onChange }) {
   );
 }
 
-function DocumentsTab({ settings, onChange }) {
+function DocumentsTab({ settings, onChange, onNavigateToEditor }) {
   return (
     <>
+      {/* ── Éditeur visuel ── */}
+      <div style={{
+        background: 'linear-gradient(135deg, #3b5beb 0%, #4c1d95 100%)',
+        borderRadius: 12, padding: 24, marginBottom: 20, color: '#fff',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+      }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <FiLayout size={20} />
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>Éditeur visuel de documents</h3>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.88rem', opacity: 0.9, lineHeight: 1.5 }}>
+            Personnalisez entièrement vos bulletins, reçus et cartes scolaires — logo, couleurs, polices, mise en page, glisser-déposer des sections.
+          </p>
+          <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+            {['Bulletins scolaires', 'Reçus de paiement', 'Cartes scolaires'].map(d => (
+              <span key={d} style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 20, padding: '3px 10px', fontSize: '0.78rem', fontWeight: 600 }}>{d}</span>
+            ))}
+          </div>
+        </div>
+        <button
+          onClick={onNavigateToEditor}
+          style={{
+            background: '#fff', color: '#3b5beb', border: 'none', borderRadius: 10,
+            padding: '12px 22px', cursor: 'pointer', fontWeight: 800, fontSize: '0.92rem',
+            display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', flexShrink: 0,
+            boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
+          }}
+        >
+          Ouvrir l'éditeur <FiArrowRight size={16} />
+        </button>
+      </div>
+
       <SectionCard title="Bulletins scolaires">
         <div className="form-group">
           <label>En-tête personnalisé (texte ou HTML simple)</label>
@@ -325,6 +360,7 @@ function SystemTab({ onReset }) {
 
 function SuperAdmin() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('platform');
   const [settings, setSettings] = useState(loadSettings);
   const [toast, setToast] = useState({ msg: '', type: 'success' });
@@ -389,7 +425,7 @@ function SuperAdmin() {
 
       {activeTab === 'platform' && <PlatformTab settings={settings} onChange={setSettings} />}
       {activeTab === 'modules' && <ModulesTab settings={settings} onChange={setSettings} />}
-      {activeTab === 'documents' && <DocumentsTab settings={settings} onChange={setSettings} />}
+      {activeTab === 'documents' && <DocumentsTab settings={settings} onChange={setSettings} onNavigateToEditor={() => navigate('/document-editor')} />}
       {activeTab === 'system' && <SystemTab onReset={handleReset} />}
 
       {/* Bouton save sticky en bas */}
