@@ -22,6 +22,8 @@ function Payments() {
   const [editing, setEditing] = useState(null);
   const [students, setStudents] = useState([]);
   const [form, setForm] = useState(emptyForm);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [showStudentDropdown, setShowStudentDropdown] = useState(false);
 
   const fetchPayments = useCallback(async () => {
     try {
@@ -44,7 +46,11 @@ function Payments() {
     api.get('/students/?page_size=1000').then(r => setStudents(r.data.results || r.data)).catch(() => {});
   }, []);
 
-  const openCreate = () => { setEditing(null); setForm(emptyForm); setShowModal(true); };
+  const openCreate = () => {
+    setEditing(null); setForm(emptyForm);
+    setStudentSearch(''); setShowStudentDropdown(false);
+    setShowModal(true);
+  };
 
   const openEdit = (p) => {
     setEditing(p);
@@ -56,6 +62,8 @@ function Payments() {
       due_date: p.due_date || '',
       notes: p.notes || '',
     });
+    setStudentSearch(p.student_name || '');
+    setShowStudentDropdown(false);
     setShowModal(true);
   };
 
@@ -224,15 +232,63 @@ function Payments() {
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
-                <div className="form-group">
+                <div className="form-group" style={{ position: 'relative' }}>
                   <label>Élève</label>
-                  <select className="form-control" required value={form.student}
-                    onChange={e => setForm({...form, student: e.target.value})}>
-                    <option value="">Sélectionner un élève</option>
-                    {students.map(s => (
-                      <option key={s.id} value={s.id}>{s.last_name} {s.first_name} ({s.matricule})</option>
-                    ))}
-                  </select>
+                  <div style={{ position: 'relative' }}>
+                    <FiSearch size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#98a2b3', pointerEvents: 'none' }} />
+                    <input
+                      className="form-control"
+                      style={{ paddingLeft: 32 }}
+                      placeholder="Rechercher un élève inscrit..."
+                      value={studentSearch}
+                      required={!form.student}
+                      autoComplete="off"
+                      onChange={e => {
+                        setStudentSearch(e.target.value);
+                        setForm({ ...form, student: '' });
+                        setShowStudentDropdown(true);
+                      }}
+                      onFocus={() => setShowStudentDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowStudentDropdown(false), 150)}
+                    />
+                  </div>
+                  {showStudentDropdown && (
+                    <div style={{
+                      position: 'absolute', zIndex: 100, background: '#fff',
+                      border: '1px solid #e2e8f0', borderRadius: 8, width: '100%',
+                      maxHeight: 220, overflowY: 'auto', boxShadow: '0 4px 16px rgba(0,0,0,0.10)'
+                    }}>
+                      {students
+                        .filter(s => {
+                          const q = studentSearch.toLowerCase();
+                          return !q || s.last_name?.toLowerCase().includes(q) || s.first_name?.toLowerCase().includes(q) || s.matricule?.toLowerCase().includes(q);
+                        })
+                        .slice(0, 50)
+                        .map(s => (
+                          <div key={s.id}
+                            style={{ padding: '8px 14px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
+                            onMouseDown={() => {
+                              setForm({ ...form, student: s.id });
+                              setStudentSearch(`${s.last_name} ${s.first_name} (${s.matricule})`);
+                              setShowStudentDropdown(false);
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#f0f4ff'}
+                            onMouseLeave={e => e.currentTarget.style.background = ''}
+                          >
+                            <strong>{s.last_name} {s.first_name}</strong>
+                            <span style={{ marginLeft: 8, color: '#718096', fontSize: 13 }}>{s.matricule}</span>
+                            {s.classe_name && <span style={{ marginLeft: 8, color: '#a0aec0', fontSize: 12 }}>{s.classe_name}</span>}
+                          </div>
+                        ))
+                      }
+                      {students.filter(s => {
+                        const q = studentSearch.toLowerCase();
+                        return !q || s.last_name?.toLowerCase().includes(q) || s.first_name?.toLowerCase().includes(q) || s.matricule?.toLowerCase().includes(q);
+                      }).length === 0 && (
+                        <div style={{ padding: '10px 14px', color: '#98a2b3', textAlign: 'center' }}>Aucun élève trouvé</div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="form-row">
                   <div className="form-group">
