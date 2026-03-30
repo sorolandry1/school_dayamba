@@ -4,13 +4,14 @@ import { useNavigate } from 'react-router-dom';
 import {
   FiPlus, FiSearch, FiEdit2, FiTrash2, FiEye, FiX,
   FiFileText, FiUpload, FiDownload, FiCheck, FiAlertCircle,
-  FiSkipForward, FiChevronDown, FiChevronUp,
+  FiSkipForward, FiChevronDown, FiChevronUp, FiCamera, FiUser,
 } from 'react-icons/fi';
 
 const emptyForm = {
   first_name: '', last_name: '', gender: 'M', classe: '',
   date_of_birth: '', birth_place: '', nationality: '',
-  parent_name: '', parent_phone: '', parent_email: '', address: ''
+  parent_name: '', parent_phone: '', parent_email: '', address: '',
+  photo: null,  // File object
 };
 
 function Students() {
@@ -26,6 +27,8 @@ function Students() {
   const [profileStudent, setProfileStudent] = useState(null);
   const [editing, setEditing]           = useState(null);
   const [form, setForm]                 = useState(emptyForm);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const photoInputRef                   = useRef(null);
   // Import state
   const [showImport, setShowImport]     = useState(false);
 
@@ -47,17 +50,34 @@ function Students() {
     api.get('/classes/current_year/').then(r => setClasses(r.data.results || r.data)).catch(() => {});
   }, []);
 
+  const handlePhotoChange = (file) => {
+    if (!file) return;
+    setForm(f => ({ ...f, photo: file }));
+    const reader = new FileReader();
+    reader.onload = (e) => setPhotoPreview(e.target.result);
+    reader.readAsDataURL(file);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      const fd = new FormData();
+      Object.entries(form).forEach(([key, val]) => {
+        if (key === 'photo') {
+          if (val instanceof File) fd.append('photo', val);
+        } else if (val !== '' && val !== null && val !== undefined) {
+          fd.append(key, val);
+        }
+      });
       if (editing) {
-        await api.put(`/students/${editing.id}/`, form);
+        await api.patch(`/students/${editing.id}/`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       } else {
-        await api.post('/students/', form);
+        await api.post('/students/', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       }
       setShowModal(false);
       setEditing(null);
       setForm(emptyForm);
+      setPhotoPreview(null);
       fetchStudents();
     } catch (err) { alert('Erreur: ' + JSON.stringify(err.response?.data)); }
   };
@@ -76,7 +96,9 @@ function Students() {
       parent_phone: student.parent_phone || '',
       parent_email: student.parent_email || '',
       address: student.address || '',
+      photo: null,
     });
+    setPhotoPreview(student.photo_url || null);
     setShowModal(true);
   };
 
@@ -114,7 +136,7 @@ function Students() {
           </button>
           <button
             className="btn btn-primary"
-            onClick={() => { setEditing(null); setForm(emptyForm); setShowModal(true); }}
+            onClick={() => { setEditing(null); setForm(emptyForm); setPhotoPreview(null); setShowModal(true); }}
           >
             <FiPlus /> Nouvel élève
           </button>
@@ -144,6 +166,7 @@ function Students() {
             <table>
               <thead>
                 <tr>
+                  <th style={{ width: 48 }}>Photo</th>
                   <th>Matricule</th>
                   <th>Nom & Prénom</th>
                   <th>Classe</th>
@@ -155,9 +178,18 @@ function Students() {
               </thead>
               <tbody>
                 {students.length === 0 ? (
-                  <tr><td colSpan="7" style={{ textAlign: 'center', padding: 40, color: '#98a2b3' }}>Aucun élève trouvé</td></tr>
+                  <tr><td colSpan="8" style={{ textAlign: 'center', padding: 40, color: '#98a2b3' }}>Aucun élève trouvé</td></tr>
                 ) : students.map(s => (
                   <tr key={s.id}>
+                    <td>
+                      {s.photo_url ? (
+                        <img src={s.photo_url} alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', border: '2px solid #e2e8f0' }} />
+                      ) : (
+                        <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#f2f4f7', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #e2e8f0' }}>
+                          <FiUser size={16} color="#98a2b3" />
+                        </div>
+                      )}
+                    </td>
                     <td><strong>{s.matricule}</strong></td>
                     <td>{s.last_name} {s.first_name}</td>
                     <td>{s.classe_name || '-'}</td>
@@ -228,6 +260,48 @@ function Students() {
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
+                {/* ── Photo upload ── */}
+                <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 20 }}>
+                  <div
+                    onClick={() => photoInputRef.current?.click()}
+                    style={{
+                      width: 80, height: 80, borderRadius: '50%', cursor: 'pointer',
+                      border: '2px dashed #e2e8f0', background: '#f8fafc',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      overflow: 'hidden', flexShrink: 0, position: 'relative',
+                    }}
+                  >
+                    {photoPreview ? (
+                      <img src={photoPreview} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <FiUser size={32} color="#98a2b3" />
+                    )}
+                    <div style={{
+                      position: 'absolute', bottom: 0, right: 0,
+                      background: '#3b5beb', borderRadius: '50%',
+                      width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <FiCamera size={12} color="#fff" />
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 4 }}>Photo de l'élève</div>
+                    <button type="button" className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '5px 12px' }}
+                      onClick={() => photoInputRef.current?.click()}>
+                      <FiUpload size={13} /> {photoPreview ? 'Changer la photo' : 'Ajouter une photo'}
+                    </button>
+                    {photoPreview && (
+                      <button type="button" className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '5px 12px', marginLeft: 6, color: '#ef4444' }}
+                        onClick={() => { setPhotoPreview(null); setForm(f => ({ ...f, photo: null })); }}>
+                        Supprimer
+                      </button>
+                    )}
+                    <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }}
+                      onChange={e => handlePhotoChange(e.target.files[0])} />
+                    <div style={{ fontSize: '0.72rem', color: '#98a2b3', marginTop: 4 }}>JPG, PNG — max 5 Mo</div>
+                  </div>
+                </div>
+
                 <div className="form-row">
                   <div className="form-group">
                     <label>Nom</label>

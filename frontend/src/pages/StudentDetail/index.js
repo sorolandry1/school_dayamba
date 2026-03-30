@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { downloadFile } from '../../utils/downloadPdf';
 import {
   FiArrowLeft, FiUser, FiBookOpen, FiCalendar, FiDollarSign, FiDownload,
-  FiCheckCircle, FiAlertCircle, FiClock
+  FiCheckCircle, FiAlertCircle, FiClock, FiCamera, FiUpload,
 } from 'react-icons/fi';
 
 function StudentDetail() {
@@ -12,13 +12,32 @@ function StudentDetail() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInputRef = useRef(null);
 
-  useEffect(() => {
+  const reload = () => {
     api.get(`/students/${id}/situation/`)
       .then(r => setData(r.data))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [id]);
+  };
+
+  useEffect(() => { reload(); }, [id]); // eslint-disable-line
+
+  const handlePhotoUpload = async (file) => {
+    if (!file) return;
+    setUploadingPhoto(true);
+    try {
+      const fd = new FormData();
+      fd.append('photo', file);
+      await api.patch(`/students/${id}/`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      reload();
+    } catch (err) {
+      alert('Erreur lors de l\'upload : ' + JSON.stringify(err.response?.data));
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   if (loading) return <div className="loading-container"><div className="spinner" /></div>;
   if (!data) return <div style={{ padding: 40, color: '#ef4444' }}>Élève introuvable.</div>;
@@ -55,6 +74,13 @@ function StudentDetail() {
           <button className="btn btn-secondary btn-sm" onClick={() => navigate('/students')}>
             <FiArrowLeft size={16} />
           </button>
+          {student.photo ? (
+            <img src={student.photo} alt="" style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', border: '2px solid #e2e8f0' }} />
+          ) : (
+            <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#f2f4f7', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #e2e8f0' }}>
+              <FiUser size={20} color="#98a2b3" />
+            </div>
+          )}
           <div>
             <h2>{student.last_name} {student.first_name}</h2>
             <p>{student.matricule} · {student.classe_name || '-'}</p>
@@ -74,16 +100,71 @@ function StudentDetail() {
           <FiUser size={16} /><h3>Profil</h3>
         </div>
         <div className="card-body">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px 24px' }}>
-            <Field label="Nom" value={student.last_name} />
-            <Field label="Prénom" value={student.first_name} />
-            <Field label="Genre" value={student.gender === 'M' ? 'Masculin' : 'Féminin'} />
-            <Field label="Date de naissance" value={student.date_of_birth || '-'} />
-            <Field label="Lieu de naissance" value={student.birth_place || '-'} />
-            <Field label="Nationalité" value={student.nationality || '-'} />
-            <Field label="Classe" value={student.classe_name || '-'} />
-            <Field label="Nom du parent" value={student.parent_name || '-'} />
-            <Field label="N° parent" value={student.parent_phone || '-'} />
+          <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>
+            {/* Photo */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              <div style={{ position: 'relative' }}>
+                {student.photo ? (
+                  <img
+                    src={student.photo}
+                    alt={student.full_name}
+                    style={{ width: 110, height: 110, borderRadius: 12, objectFit: 'cover', border: '3px solid #e2e8f0', display: 'block' }}
+                  />
+                ) : (
+                  <div style={{
+                    width: 110, height: 110, borderRadius: 12, border: '3px solid #e2e8f0',
+                    background: '#f2f4f7', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <FiUser size={48} color="#98a2b3" />
+                  </div>
+                )}
+                {/* Bouton caméra superposé */}
+                <button
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={uploadingPhoto}
+                  title="Changer la photo"
+                  style={{
+                    position: 'absolute', bottom: -8, right: -8,
+                    width: 32, height: 32, borderRadius: '50%',
+                    background: '#3b5beb', color: '#fff', border: '2px solid #fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
+                  }}
+                >
+                  {uploadingPhoto ? <span style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', animation: 'spin 0.8s linear infinite', display: 'block' }} /> : <FiCamera size={14} />}
+                </button>
+              </div>
+
+              <button
+                className="btn btn-secondary"
+                style={{ fontSize: '0.78rem', padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 5 }}
+                onClick={() => photoInputRef.current?.click()}
+                disabled={uploadingPhoto}
+              >
+                <FiUpload size={13} /> {student.photo ? 'Changer' : 'Ajouter photo'}
+              </button>
+
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={e => handlePhotoUpload(e.target.files[0])}
+              />
+            </div>
+
+            {/* Champs */}
+            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '12px 24px', alignContent: 'start' }}>
+              <Field label="Nom" value={student.last_name} />
+              <Field label="Prénom" value={student.first_name} />
+              <Field label="Genre" value={student.gender === 'M' ? 'Masculin' : 'Féminin'} />
+              <Field label="Date de naissance" value={student.date_of_birth || '-'} />
+              <Field label="Lieu de naissance" value={student.birth_place || '-'} />
+              <Field label="Nationalité" value={student.nationality || '-'} />
+              <Field label="Classe" value={student.classe_name || '-'} />
+              <Field label="Nom du parent" value={student.parent_name || '-'} />
+              <Field label="N° parent" value={student.parent_phone || '-'} />
+            </div>
           </div>
         </div>
       </div>

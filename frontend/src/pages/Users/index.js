@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import {
   FiPlus, FiSearch, FiEdit2, FiToggleLeft, FiToggleRight,
   FiKey, FiX, FiUser, FiShield
@@ -25,6 +26,7 @@ const emptyForm = {
 };
 
 function Users() {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -35,6 +37,18 @@ function Users() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState(null);
   const [newPassword, setNewPassword] = useState('');
+
+  // Directeur ne peut pas toucher les comptes Admin
+  const canActOn = (targetUser) => {
+    if (currentUser?.role === 'DIRECTOR' && targetUser?.role === 'ADMIN') return false;
+    return true;
+  };
+
+  // Directeur ne peut pas attribuer le rôle Admin
+  const availableRoles = Object.entries(ROLE_LABELS).filter(([role]) => {
+    if (currentUser?.role === 'DIRECTOR' && role === 'ADMIN') return false;
+    return true;
+  });
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -199,21 +213,25 @@ function Users() {
                       </span>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn btn-sm btn-secondary" title="Modifier" onClick={() => openEdit(u)}>
-                          <FiEdit2 size={14} />
-                        </button>
-                        <button className="btn btn-sm btn-secondary" title="Réinitialiser mot de passe" onClick={() => openResetPassword(u)}>
-                          <FiKey size={14} />
-                        </button>
-                        <button
-                          className={`btn btn-sm ${u.is_active ? 'btn-danger' : 'btn-secondary'}`}
-                          title={u.is_active ? 'Désactiver' : 'Activer'}
-                          onClick={() => toggleActive(u)}
-                        >
-                          {u.is_active ? <FiToggleRight size={16} /> : <FiToggleLeft size={16} />}
-                        </button>
-                      </div>
+                      {canActOn(u) ? (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button className="btn btn-sm btn-secondary" title="Modifier" onClick={() => openEdit(u)}>
+                            <FiEdit2 size={14} />
+                          </button>
+                          <button className="btn btn-sm btn-secondary" title="Réinitialiser mot de passe" onClick={() => openResetPassword(u)}>
+                            <FiKey size={14} />
+                          </button>
+                          <button
+                            className={`btn btn-sm ${u.is_active ? 'btn-danger' : 'btn-secondary'}`}
+                            title={u.is_active ? 'Désactiver' : 'Activer'}
+                            onClick={() => toggleActive(u)}
+                          >
+                            {u.is_active ? <FiToggleRight size={16} /> : <FiToggleLeft size={16} />}
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: '0.78rem', color: '#98a2b3', fontStyle: 'italic' }}>Accès restreint</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -255,7 +273,7 @@ function Users() {
                     <label>Rôle</label>
                     <select className="form-control" value={form.role}
                       onChange={e => setForm({...form, role: e.target.value})}>
-                      {Object.entries(ROLE_LABELS).map(([role, label]) => (
+                      {availableRoles.map(([role, label]) => (
                         <option key={role} value={role}>{label}</option>
                       ))}
                     </select>

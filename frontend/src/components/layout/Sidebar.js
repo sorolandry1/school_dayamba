@@ -7,13 +7,21 @@ import {
   FiHome, FiUsers, FiBook, FiClipboard, FiDollarSign,
   FiBarChart2, FiCamera, FiLogOut, FiGrid,
   FiFileText, FiShield, FiUserCheck, FiActivity, FiUser,
-  FiMessageSquare, FiEdit3, FiGlobe
+  FiMessageSquare, FiEdit3, FiGlobe, FiCreditCard, FiSettings
 } from 'react-icons/fi';
+
+function getModules() {
+  try {
+    const s = JSON.parse(localStorage.getItem('schoolSettings') || '{}');
+    return { ...{ payments: true, reports: true, communications: true, expenses: true, bulletins: true, attendance: true, grades: true, subjects: true, logs: true, studentCards: true }, ...(s.modules || {}) };
+  } catch { return {}; }
+}
 
 function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const modules = getModules();
 
   const handleLogout = () => {
     logout();
@@ -36,18 +44,22 @@ function Sidebar({ isOpen, onClose }) {
     { to: '/students', icon: <FiUsers />, label: t('sidebar.links.students') },
     { to: '/teachers', icon: <FiBook />, label: t('sidebar.links.teachers') },
     { to: '/classes', icon: <FiGrid />, label: t('sidebar.links.classes') },
+    ...(modules.studentCards !== false ? [{ to: '/student-cards', icon: <FiCreditCard />, label: t('sidebar.links.student_cards') }] : []),
 
     { section: t('sidebar.sections.scolarite') },
-    { to: '/bulletins', icon: <FiFileText />, label: t('sidebar.links.bulletins') },
-    { to: '/attendance', icon: <FiCamera />, label: t('sidebar.links.attendance') },
+    ...(modules.bulletins !== false ? [{ to: '/bulletins', icon: <FiFileText />, label: t('sidebar.links.bulletins') }] : []),
+    ...(modules.grades !== false ? [{ to: '/grades', icon: <FiClipboard />, label: t('sidebar.links.grades') }] : []),
+    ...(modules.attendance !== false ? [{ to: '/attendance', icon: <FiCamera />, label: t('sidebar.links.attendance') }] : []),
 
     { section: t('sidebar.sections.administration') },
-    { to: '/payments', icon: <FiDollarSign />, label: t('sidebar.links.payments') },
-    { to: '/reports', icon: <FiBarChart2 />, label: t('sidebar.links.reports') },
-    { to: '/communications', icon: <FiMessageSquare />, label: t('sidebar.links.communications') },
-    { to: '/subjects', icon: <FiBook />, label: t('sidebar.links.subjects') },
+    ...(modules.payments !== false ? [{ to: '/payments', icon: <FiDollarSign />, label: t('sidebar.links.payments') }] : []),
+    ...(modules.reports !== false ? [{ to: '/reports', icon: <FiBarChart2 />, label: t('sidebar.links.reports') }] : []),
+    ...(modules.communications !== false ? [{ to: '/communications', icon: <FiMessageSquare />, label: t('sidebar.links.communications') }] : []),
+    ...(modules.subjects !== false ? [{ to: '/subjects', icon: <FiBook />, label: t('sidebar.links.subjects') }] : []),
+    ...(modules.expenses !== false ? [{ to: '/expenses', icon: <FiDollarSign />, label: t('sidebar.links.expenses') }] : []),
     { to: '/users', icon: <FiShield />, label: t('sidebar.links.users') },
-    { to: '/logs', icon: <FiActivity />, label: t('sidebar.links.logs') },
+    ...(modules.logs !== false ? [{ to: '/logs', icon: <FiActivity />, label: t('sidebar.links.logs') }] : []),
+    ...(user?.role === 'ADMIN' ? [{ to: '/super-admin', icon: <FiSettings />, label: t('sidebar.links.super_admin') }] : []),
   ];
 
   // --- PROFESSEUR ---

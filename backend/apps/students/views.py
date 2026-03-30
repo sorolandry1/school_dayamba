@@ -33,6 +33,7 @@ HEADER_LABELS = [c[0] for c in IMPORT_COLUMNS]
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.select_related('classe', 'classe__level').all()
     permission_classes = [IsAdminOrReadOnly]
+    parser_classes = [MultiPartParser, FormParser]
     filterset_fields = ['classe', 'payment_status', 'is_active', 'gender']
     search_fields = ['first_name', 'last_name', 'matricule', 'parent_phone']
     ordering_fields = ['last_name', 'enrolled_date']

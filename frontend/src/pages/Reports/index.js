@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { downloadFile } from '../../utils/downloadPdf';
 import {
-  FiDownload, FiBarChart2, FiAward, FiUsers,
+  FiDownload, FiBarChart2, FiAward,
   FiDollarSign, FiClock, FiFileText, FiFilter
 } from 'react-icons/fi';
 
 const TABS = [
   { key: 'performance', label: 'Performance', icon: <FiAward size={15} /> },
   { key: 'absences', label: 'Absences', icon: <FiClock size={15} /> },
-  { key: 'payments', label: 'Paiements', icon: <FiDollarSign size={15} /> },
+  { key: 'payments', label: 'Comptabilité', icon: <FiDollarSign size={15} /> },
   { key: 'bulletins', label: 'Bulletins', icon: <FiFileText size={15} /> },
 ];
 

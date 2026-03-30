@@ -25,6 +25,8 @@ import Subjects from './pages/Subjects';
 import Expenses from './pages/Expenses';
 import Communications from './pages/Communications';
 import LessonLog from './pages/LessonLog';
+import StudentCards from './pages/StudentCards';
+import SuperAdmin from './pages/SuperAdmin';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, isAuthenticated } = useAuth();
@@ -70,6 +72,8 @@ function AppRoutes() {
         <Route path="/logs" element={<ActivityLogs />} />
         <Route path="/expenses" element={<Expenses />} />
         <Route path="/communications" element={<Communications />} />
+        <Route path="/student-cards" element={<StudentCards />} />
+        <Route path="/super-admin" element={<SuperAdmin />} />
       </Route>
 
       {/* Teacher routes */}

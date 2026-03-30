@@ -81,9 +81,56 @@ class UserViewSet(viewsets.ModelViewSet):
             return UserCreateSerializer
         return UserSerializer
 
+    def _check_director_cannot_touch_admin(self, request, target_user=None, target_role=None):
+        """Directeur ne peut pas créer/modifier/supprimer un compte Admin."""
+        if request.user.role == 'DIRECTOR':
+            if target_user and target_user.role == 'ADMIN':
+                return Response(
+                    {'error': 'Le Directeur ne peut pas modifier le compte d\'un Administrateur.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            if target_role == 'ADMIN':
+                return Response(
+                    {'error': 'Le Directeur ne peut pas créer ou attribuer le rôle Administrateur.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+        return None
+
+    def create(self, request, *args, **kwargs):
+        err = self._check_director_cannot_touch_admin(request, target_role=request.data.get('role'))
+        if err:
+            return err
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        target = self.get_object()
+        err = self._check_director_cannot_touch_admin(request, target_user=target,
+                                                       target_role=request.data.get('role'))
+        if err:
+            return err
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        target = self.get_object()
+        err = self._check_director_cannot_touch_admin(request, target_user=target,
+                                                       target_role=request.data.get('role'))
+        if err:
+            return err
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        target = self.get_object()
+        err = self._check_director_cannot_touch_admin(request, target_user=target)
+        if err:
+            return err
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=True, methods=['post'])
     def toggle_active(self, request, pk=None):
         user = self.get_object()
+        err = self._check_director_cannot_touch_admin(request, target_user=user)
+        if err:
+            return err
         user.is_active = not user.is_active
         user.save()
         return Response({'is_active': user.is_active})
@@ -91,6 +138,9 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def reset_password(self, request, pk=None):
         user = self.get_object()
+        err = self._check_director_cannot_touch_admin(request, target_user=user)
+        if err:
+            return err
         new_password = request.data.get('password')
         if not new_password:
             return Response({'error': 'Le mot de passe est requis.'}, status=status.HTTP_400_BAD_REQUEST)

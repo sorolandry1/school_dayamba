@@ -45,7 +45,10 @@
       "attendance_today": "Présences du jour",
       "my_profile": "Mon profil",
       "grades": "Saisie des notes",
-      "lessons": "Cahier de texte"
+      "lessons": "Cahier de texte",
+      "student_cards": "Cartes Scolaires",
+      "expenses": "Dépenses",
+      "super_admin": "Super Administrateur"
     },
     "logout": "Déconnexion",
     "roles": {
