@@ -152,7 +152,8 @@ function buildDefaultConfig(docType) {
       },
       gradesTable: {
         show: true, showCoefficient: true, showWeightedAverage: true,
-        showAppreciation: true, showSignatureCol: false, stripeRows: true,
+        showAppreciation: true, showTeacherName: false, showSignatureCol: false, stripeRows: true,
+        columnsOrder: ['matiere', 'coeff', 'moy', 'moyPond', 'appreciation', 'teacher', 'signature'],
       },
       summary: {
         show: true, showLiterary: true, showScientific: true,
@@ -485,12 +486,12 @@ function DynamicBlocksPanel({ insertToken, docType }) {
 // SAMPLE DATA FOR PREVIEW
 // ─────────────────────────────────────────────────────────────
 const SAMPLE_SUBJECTS = [
-  { name: 'Mathématiques', coeff: 4, avg: 14.5, wa: 58.0, appr: 'Bien' },
-  { name: 'Français',      coeff: 4, avg: 12.0, wa: 48.0, appr: 'Assez Bien' },
-  { name: 'Sciences',      coeff: 2, avg: 15.5, wa: 31.0, appr: 'Très Bien' },
-  { name: 'Histoire-Géo',  coeff: 2, avg: 11.0, wa: 22.0, appr: 'Passable' },
-  { name: 'Anglais',       coeff: 2, avg: 13.5, wa: 27.0, appr: 'Assez Bien' },
-  { name: 'EPS',           coeff: 1, avg: 16.0, wa: 16.0, appr: 'Très Bien' },
+  { name: 'Mathématiques', coeff: 4, avg: 14.5, wa: 58.0, appr: 'Bien',       teacher: 'M. KONÉ' },
+  { name: 'Français',      coeff: 4, avg: 12.0, wa: 48.0, appr: 'Assez Bien', teacher: 'Mme SAWADOGO' },
+  { name: 'Sciences',      coeff: 2, avg: 15.5, wa: 31.0, appr: 'Très Bien',  teacher: 'M. TRAORÉ' },
+  { name: 'Histoire-Géo',  coeff: 2, avg: 11.0, wa: 22.0, appr: 'Passable',   teacher: 'M. DIALLO' },
+  { name: 'Anglais',       coeff: 2, avg: 13.5, wa: 27.0, appr: 'Assez Bien', teacher: 'Mme OUÉDRAOGO' },
+  { name: 'EPS',           coeff: 1, avg: 16.0, wa: 16.0, appr: 'Très Bien',  teacher: 'M. COMPAORÉ' },
 ];
 
 // ─────────────────────────────────────────────────────────────
@@ -575,34 +576,48 @@ function BulletinPreview({ config, isEditing, onMoveSection }) {
         </div>
       </div>
     ),
-    gradesTable: gt.show !== false && (
-      <div style={{ padding: `8px ${margin}` }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={thSt}>Matière</th>
-              {gt.showCoefficient !== false && <th style={{ ...thSt, width: 48, textAlign: 'center' }}>Coeff.</th>}
-              <th style={{ ...thSt, width: 60, textAlign: 'center' }}>Moy.</th>
-              {gt.showWeightedAverage !== false && <th style={{ ...thSt, width: 68, textAlign: 'center' }}>Moy. Pond.</th>}
-              {gt.showAppreciation !== false && <th style={{ ...thSt, width: 88 }}>Appréciation</th>}
-              {gt.showSignatureCol && <th style={{ ...thSt, width: 72, textAlign: 'center' }}>Signature</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {SAMPLE_SUBJECTS.map((row, i) => (
-              <tr key={i} style={{ background: gt.stripeRows !== false && i % 2 === 1 ? (co.tableRowAlt || '#f7fafc') : '#fff' }}>
-                <td style={tdSt}><strong>{row.name}</strong></td>
-                {gt.showCoefficient !== false && <td style={{ ...tdSt, textAlign: 'center' }}>{row.coeff}</td>}
-                <td style={{ ...tdSt, textAlign: 'center', fontWeight: 700, color: row.avg >= 14 ? '#10b981' : row.avg >= 10 ? '#f59e0b' : '#ef4444' }}>{row.avg}/20</td>
-                {gt.showWeightedAverage !== false && <td style={{ ...tdSt, textAlign: 'center' }}>{row.wa}</td>}
-                {gt.showAppreciation !== false && <td style={{ ...tdSt, fontSize: (ty.tableSize || 9) - 0.5 }}>{row.appr}</td>}
-                {gt.showSignatureCol && <td style={tdSt}></td>}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    ),
+    gradesTable: gt.show !== false && (() => {
+      const DEFAULT_COL_ORDER = ['matiere', 'coeff', 'moy', 'moyPond', 'appreciation', 'teacher', 'signature'];
+      const colOrder = gt.columnsOrder || DEFAULT_COL_ORDER;
+
+      const COL_DEF = {
+        matiere:     { header: () => <th style={thSt}>Matière</th>,                                              visible: () => true },
+        coeff:       { header: () => <th style={{ ...thSt, width: 48, textAlign: 'center' }}>Coeff.</th>,        visible: () => gt.showCoefficient !== false },
+        moy:         { header: () => <th style={{ ...thSt, width: 60, textAlign: 'center' }}>Moy.</th>,          visible: () => true },
+        moyPond:     { header: () => <th style={{ ...thSt, width: 68, textAlign: 'center' }}>Moy. Pond.</th>,    visible: () => gt.showWeightedAverage !== false },
+        appreciation:{ header: () => <th style={{ ...thSt, width: 88 }}>Appréciation</th>,                      visible: () => gt.showAppreciation !== false },
+        teacher:     { header: () => <th style={{ ...thSt, width: 90 }}>Professeur</th>,                         visible: () => gt.showTeacherName },
+        signature:   { header: () => <th style={{ ...thSt, width: 72, textAlign: 'center' }}>Signature</th>,    visible: () => gt.showSignatureCol },
+      };
+      const COL_CELL = {
+        matiere:      (row) => <td style={tdSt}><strong>{row.name}</strong></td>,
+        coeff:        (row) => <td style={{ ...tdSt, textAlign: 'center' }}>{row.coeff}</td>,
+        moy:          (row) => <td style={{ ...tdSt, textAlign: 'center', fontWeight: 700, color: row.avg >= 14 ? '#10b981' : row.avg >= 10 ? '#f59e0b' : '#ef4444' }}>{row.avg}/20</td>,
+        moyPond:      (row) => <td style={{ ...tdSt, textAlign: 'center' }}>{row.wa}</td>,
+        appreciation: (row) => <td style={{ ...tdSt, fontSize: (ty.tableSize || 9) - 0.5 }}>{row.appr}</td>,
+        teacher:      (row) => <td style={{ ...tdSt, fontSize: (ty.tableSize || 9) - 0.5, fontStyle: 'italic', color: '#667085' }}>{row.teacher}</td>,
+        signature:    ()    => <td style={tdSt}></td>,
+      };
+
+      const visibleCols = colOrder.filter(k => COL_DEF[k]?.visible());
+
+      return (
+        <div style={{ padding: `8px ${margin}` }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>{visibleCols.map(k => <React.Fragment key={k}>{COL_DEF[k].header()}</React.Fragment>)}</tr>
+            </thead>
+            <tbody>
+              {SAMPLE_SUBJECTS.map((row, i) => (
+                <tr key={i} style={{ background: gt.stripeRows !== false && i % 2 === 1 ? (co.tableRowAlt || '#f7fafc') : '#fff' }}>
+                  {visibleCols.map(k => <React.Fragment key={k}>{COL_CELL[k](row)}</React.Fragment>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    })(),
     summary: sum.show !== false && (
       <div style={{ padding: `0 ${margin} 8px` }}>
         <div style={{ background: co.accent || '#ebf8ff', border: `1px solid ${co.border || '#e2e8f0'}`, borderRadius: 6, padding: '8px 12px' }}>
@@ -1021,6 +1036,84 @@ function HeaderPanel({ config, update, docType }) {
   );
 }
 
+const DEFAULT_COL_ORDER = ['matiere', 'coeff', 'moy', 'moyPond', 'appreciation', 'teacher', 'signature'];
+const COL_LABELS = {
+  matiere:      'Matière',
+  coeff:        'Coefficient',
+  moy:          'Moyenne',
+  moyPond:      'Moy. pondérée',
+  appreciation: 'Appréciation',
+  teacher:      'Professeur',
+  signature:    'Signature',
+};
+
+function ColumnOrderEditor({ gt, setGT }) {
+  const order = gt.columnsOrder || DEFAULT_COL_ORDER;
+  const dragIdx = React.useRef(null);
+
+  const onDragStart = (i) => { dragIdx.current = i; };
+  const onDrop = (i) => {
+    if (dragIdx.current === null || dragIdx.current === i) return;
+    const next = [...order];
+    const [moved] = next.splice(dragIdx.current, 1);
+    next.splice(i, 0, moved);
+    setGT('columnsOrder', next);
+    dragIdx.current = null;
+  };
+  const onDragOver = (e) => { e.preventDefault(); };
+
+  const isVisible = (key) => {
+    if (key === 'coeff')       return gt.showCoefficient !== false;
+    if (key === 'moyPond')     return gt.showWeightedAverage !== false;
+    if (key === 'appreciation')return gt.showAppreciation !== false;
+    if (key === 'teacher')     return gt.showTeacherName;
+    if (key === 'signature')   return gt.showSignatureCol;
+    return true; // matiere, moy always visible
+  };
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#667085', marginBottom: 5 }}>
+        Ordre des colonnes <span style={{ fontWeight: 400, color: '#98a2b3' }}>(glisser-déposer)</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {order.map((key, i) => (
+          <div
+            key={key}
+            draggable
+            onDragStart={() => onDragStart(i)}
+            onDragOver={onDragOver}
+            onDrop={() => onDrop(i)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              padding: '5px 8px', borderRadius: 6,
+              background: isVisible(key) ? '#f8faff' : '#f5f5f5',
+              border: `1px solid ${isVisible(key) ? '#c7d4fb' : '#e2e8f0'}`,
+              cursor: 'grab', userSelect: 'none',
+              opacity: isVisible(key) ? 1 : 0.45,
+            }}
+          >
+            <span style={{ color: '#98a2b3', fontSize: '0.75rem', cursor: 'grab' }}>⠿</span>
+            <span style={{ fontSize: '0.79rem', fontWeight: 600, color: isVisible(key) ? '#344054' : '#98a2b3', flex: 1 }}>
+              {COL_LABELS[key]}
+            </span>
+            <span style={{ fontSize: '0.65rem', color: '#98a2b3' }}>{i + 1}</span>
+            {!isVisible(key) && (
+              <span style={{ fontSize: '0.62rem', color: '#98a2b3', fontStyle: 'italic' }}>masqué</span>
+            )}
+          </div>
+        ))}
+      </div>
+      <button
+        onClick={() => setGT('columnsOrder', DEFAULT_COL_ORDER)}
+        style={{ marginTop: 6, fontSize: '0.72rem', color: '#98a2b3', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+      >
+        Réinitialiser l'ordre
+      </button>
+    </div>
+  );
+}
+
 function BulletinSectionsPanel({ config, update }) {
   const si  = config.studentInfo || {};
   const gt  = config.gradesTable || {};
@@ -1059,8 +1152,12 @@ function BulletinSectionsPanel({ config, update }) {
         <Toggle checked={gt.showCoefficient !== false} onChange={v => setGT('showCoefficient', v)} label="Coefficient" />
         <Toggle checked={gt.showWeightedAverage !== false} onChange={v => setGT('showWeightedAverage', v)} label="Moyenne pondérée" />
         <Toggle checked={gt.showAppreciation !== false} onChange={v => setGT('showAppreciation', v)} label="Appréciation" />
+        <Toggle checked={gt.showTeacherName || false} onChange={v => setGT('showTeacherName', v)} label="Nom du professeur" />
         <Toggle checked={gt.showSignatureCol || false} onChange={v => setGT('showSignatureCol', v)} label="Colonne signature" />
         <Toggle checked={gt.stripeRows !== false} onChange={v => setGT('stripeRows', v)} label="Lignes alternées" />
+
+        {/* Column order drag-and-drop */}
+        <ColumnOrderEditor gt={gt} setGT={setGT} />
       </S>
       <S t="Bilan">
         <Toggle checked={sum.show !== false} onChange={v => setSum('show', v)} label="Afficher le bilan" />
@@ -1157,6 +1254,16 @@ function CardSectionsPanel({ config, update }) {
 // ─────────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────
+const SCHOOL_TYPE_OPTIONS = [
+  { value: 'all',        label: 'Tous les établissements' },
+  { value: 'primaire',   label: 'École primaire' },
+  { value: 'college',    label: 'Collège' },
+  { value: 'lycee',      label: 'Lycée' },
+  { value: 'universite', label: 'Université' },
+  { value: 'technique',  label: 'Technique' },
+  { value: 'prive',      label: 'Privé' },
+];
+
 export default function DocumentEditor() {
   const navigate = useNavigate();
   const [docType, setDocType] = useState('bulletin');
@@ -1164,22 +1271,35 @@ export default function DocumentEditor() {
   const [selectedId, setSelectedId] = useState(null);
   const [config, setConfig] = useState(() => buildDefaultConfig('bulletin'));
   const [templateName, setTemplateName] = useState('');
+  const [schoolType, setSchoolType] = useState('all');
   const [activeTab, setActiveTab] = useState('colors');
   const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [isEditing, setIsEditing] = useState(true); // drag mode
 
+  // ── PDF generation modal ──
+  const [showPdfModal, setShowPdfModal] = useState(false);
+  const [pdfStudents, setPdfStudents] = useState([]);
+  const [pdfPayments, setPdfPayments] = useState([]);
+  const [pdfStudentId, setPdfStudentId] = useState('');
+  const [pdfPaymentId, setPdfPaymentId] = useState('');
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [pdfSearch, setPdfSearch] = useState('');
+
   const schoolSettings = (() => {
     try { return JSON.parse(localStorage.getItem('schoolSettings') || '{}'); } catch { return {}; }
   })();
 
-  // Apply school name from platform settings
+  // Apply school name + school type from platform settings
   useEffect(() => {
     if (!config.header?.schoolName && schoolSettings.schoolName) {
       setConfig(prev => ({ ...prev, header: { ...prev.header, schoolName: schoolSettings.schoolName } }));
     }
     if (!config.layout?.logo && schoolSettings.logoUrl) {
       setConfig(prev => ({ ...prev, layout: { ...prev.layout, logo: schoolSettings.logoUrl } }));
+    }
+    if (schoolSettings.schoolType) {
+      setSchoolType(schoolSettings.schoolType);
     }
   }, []); // eslint-disable-line
 
@@ -1209,6 +1329,7 @@ export default function DocumentEditor() {
     setSelectedId(tmpl.id);
     setConfig(tmpl.config);
     setTemplateName(tmpl.name);
+    setSchoolType(tmpl.school_type || 'all');
     setIsDirty(false);
   };
 
@@ -1236,7 +1357,7 @@ export default function DocumentEditor() {
     if (!templateName.trim()) { toast.error('Veuillez saisir un nom pour ce modèle.'); return; }
     setSaving(true);
     try {
-      const payload = { name: templateName, document_type: docType, style_preset: config.style_preset || 'classic', config };
+      const payload = { name: templateName, document_type: docType, style_preset: config.style_preset || 'classic', school_type: schoolType, config };
       if (selectedId) {
         const res = await api.put(`/reports/templates/${selectedId}/`, payload);
         setTemplates(prev => prev.map(t => t.id === selectedId ? res.data : t));
@@ -1306,6 +1427,44 @@ export default function DocumentEditor() {
     return true;
   }, []); // eslint-disable-line
 
+  const openPdfModal = async () => {
+    setShowPdfModal(true);
+    setPdfStudentId('');
+    setPdfPaymentId('');
+    setPdfSearch('');
+    try {
+      const [sRes, pRes] = await Promise.all([
+        api.get('/students/?limit=200'),
+        docType === 'receipt' ? api.get('/payments/?limit=200') : Promise.resolve({ data: [] }),
+      ]);
+      setPdfStudents(Array.isArray(sRes.data) ? sRes.data : (sRes.data.results || []));
+      setPdfPayments(Array.isArray(pRes.data) ? pRes.data : (pRes.data.results || []));
+    } catch { setPdfStudents([]); setPdfPayments([]); }
+  };
+
+  const generatePdf = async () => {
+    if (!selectedId) {
+      toast.error('Veuillez d\'abord sauvegarder le modèle.');
+      return;
+    }
+    if (docType === 'receipt' && !pdfPaymentId) { toast.error('Sélectionnez un paiement.'); return; }
+    if (docType !== 'receipt' && !pdfStudentId) { toast.error('Sélectionnez un élève.'); return; }
+    setPdfGenerating(true);
+    try {
+      let url;
+      if (docType === 'bulletin') url = `/reports/bulletin/${pdfStudentId}/?template_id=${selectedId}`;
+      else if (docType === 'receipt') url = `/reports/receipt/${pdfPaymentId}/?template_id=${selectedId}`;
+      else url = `/reports/card/${pdfStudentId}/?template_id=${selectedId}`;
+
+      const res = await api.get(url, { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const objUrl = URL.createObjectURL(blob);
+      window.open(objUrl, '_blank');
+      toast.success('PDF généré !');
+    } catch { toast.error('Erreur lors de la génération du PDF.'); }
+    finally { setPdfGenerating(false); }
+  };
+
   const EDITOR_TABS = [
     { key: 'colors',     label: 'Couleurs',    icon: <FiSliders size={13} /> },
     { key: 'typography', label: 'Typo',        icon: <FiType size={13} /> },
@@ -1369,6 +1528,10 @@ export default function DocumentEditor() {
             <FiTrash2 size={14} />
           </button>
         )}
+        <button onClick={openPdfModal}
+          style={{ background: '#059669', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.88rem', fontWeight: 700 }}>
+          <FiEye size={14} /> Générer PDF
+        </button>
         <button onClick={save} disabled={saving}
           style={{ background: '#3b5beb', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 16px', cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.88rem', fontWeight: 700, opacity: saving ? 0.7 : 1 }}>
           {saving ? <FiRefreshCw size={14} /> : <FiSave size={14} />}
@@ -1401,7 +1564,17 @@ export default function DocumentEditor() {
 
           {/* Saved templates */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#667085', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Modèles sauvegardés</div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#667085', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Modèles sauvegardés</div>
+            {/* School type filter for templates */}
+            <select
+              value={schoolType}
+              onChange={e => setSchoolType(e.target.value)}
+              style={{ width: '100%', marginBottom: 8, padding: '5px 8px', borderRadius: 6, border: '1px solid #d0d5dd', fontSize: '0.76rem', color: '#344054', background: '#fff' }}
+            >
+              {SCHOOL_TYPE_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
             {templates.length === 0
               ? <p style={{ fontSize: '0.78rem', color: '#98a2b3', textAlign: 'center', marginTop: 12 }}>Aucun modèle<br />Créez-en un !</p>
               : templates.map(t => (
@@ -1410,9 +1583,16 @@ export default function DocumentEditor() {
                     background: selectedId === t.id ? '#e8edff' : '#fff',
                     border: `1px solid ${selectedId === t.id ? '#3b5beb' : '#e2e8f0'}`,
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#344054' }}>{t.name}</span>
-                      {t.is_default && <span style={{ fontSize: '0.65rem', background: '#10b981', color: '#fff', borderRadius: 3, padding: '1px 5px' }}>Défaut</span>}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#344054', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                      <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+                        {t.is_default && <span style={{ fontSize: '0.62rem', background: '#10b981', color: '#fff', borderRadius: 3, padding: '1px 5px' }}>Défaut</span>}
+                        {t.school_type && t.school_type !== 'all' && (
+                          <span style={{ fontSize: '0.62rem', background: '#6d28d9', color: '#fff', borderRadius: 3, padding: '1px 5px' }}>
+                            {SCHOOL_TYPE_OPTIONS.find(o => o.value === t.school_type)?.label || t.school_type}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
                       <div style={{ width: 10, height: 10, borderRadius: 2, background: (t.config?.colors?.primary || '#1a365d') }} />
@@ -1485,6 +1665,111 @@ export default function DocumentEditor() {
         </FieldFocusCtx.Provider>
 
       </div>
+
+      {/* ── PDF GENERATION MODAL ── */}
+      {showPdfModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setShowPdfModal(false)}>
+          <div style={{
+            background: '#fff', borderRadius: 14, padding: 28, width: 440, maxWidth: '95vw',
+            boxShadow: '0 8px 40px rgba(0,0,0,0.22)',
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#1a1a2e' }}>
+                Générer un PDF — {docType === 'bulletin' ? 'Bulletin' : docType === 'receipt' ? 'Reçu' : 'Carte'}
+              </h3>
+              <button onClick={() => setShowPdfModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#98a2b3' }}>
+                <FiX size={18} />
+              </button>
+            </div>
+
+            {!selectedId && (
+              <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: '0.82rem', color: '#92400e', fontWeight: 600 }}>
+                Veuillez sauvegarder le modèle avant de générer un PDF.
+              </div>
+            )}
+
+            <input
+              placeholder={docType === 'receipt' ? 'Rechercher un paiement...' : 'Rechercher un élève...'}
+              value={pdfSearch}
+              onChange={e => setPdfSearch(e.target.value)}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d0d5dd', fontSize: '0.85rem', marginBottom: 10, boxSizing: 'border-box' }}
+            />
+
+            {docType !== 'receipt' && (
+              <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8, marginBottom: 14 }}>
+                {pdfStudents
+                  .filter(s => !pdfSearch || `${s.first_name} ${s.last_name} ${s.matricule}`.toLowerCase().includes(pdfSearch.toLowerCase()))
+                  .map(s => (
+                    <div key={s.id} onClick={() => setPdfStudentId(String(s.id))} style={{
+                      padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9',
+                      background: pdfStudentId === String(s.id) ? '#e8edff' : '#fff',
+                      display: 'flex', alignItems: 'center', gap: 10,
+                    }}>
+                      <div style={{
+                        width: 30, height: 30, borderRadius: '50%', background: '#3b5beb', color: '#fff',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.78rem', flexShrink: 0,
+                      }}>
+                        {(s.first_name?.[0] || '') + (s.last_name?.[0] || '')}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#344054' }}>{s.last_name} {s.first_name}</div>
+                        <div style={{ fontSize: '0.73rem', color: '#98a2b3' }}>{s.matricule} · {s.classe_name || s.classe || ''}</div>
+                      </div>
+                      {pdfStudentId === String(s.id) && <FiCheck size={14} style={{ color: '#3b5beb', marginLeft: 'auto' }} />}
+                    </div>
+                  ))}
+                {pdfStudents.length === 0 && (
+                  <div style={{ padding: 20, textAlign: 'center', color: '#98a2b3', fontSize: '0.82rem' }}>Chargement...</div>
+                )}
+              </div>
+            )}
+
+            {docType === 'receipt' && (
+              <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8, marginBottom: 14 }}>
+                {pdfPayments
+                  .filter(p => !pdfSearch || `${p.student_name || ''} ${p.receipt_number || ''}`.toLowerCase().includes(pdfSearch.toLowerCase()))
+                  .map(p => (
+                    <div key={p.id} onClick={() => setPdfPaymentId(String(p.id))} style={{
+                      padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9',
+                      background: pdfPaymentId === String(p.id) ? '#e8edff' : '#fff',
+                      display: 'flex', alignItems: 'center', gap: 10,
+                    }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#344054' }}>{p.student_name || `Paiement #${p.id}`}</div>
+                        <div style={{ fontSize: '0.73rem', color: '#98a2b3' }}>{p.receipt_number} · {p.amount?.toLocaleString('fr-FR')} FCFA · {p.payment_type}</div>
+                      </div>
+                      {pdfPaymentId === String(p.id) && <FiCheck size={14} style={{ color: '#3b5beb', marginLeft: 'auto' }} />}
+                    </div>
+                  ))}
+                {pdfPayments.length === 0 && (
+                  <div style={{ padding: 20, textAlign: 'center', color: '#98a2b3', fontSize: '0.82rem' }}>Chargement...</div>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowPdfModal(false)} style={{
+                flex: 1, padding: '10px', borderRadius: 8, border: '1px solid #d0d5dd',
+                background: '#fff', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 600, color: '#344054',
+              }}>
+                Annuler
+              </button>
+              <button onClick={generatePdf} disabled={pdfGenerating || !selectedId} style={{
+                flex: 2, padding: '10px', borderRadius: 8, border: 'none',
+                background: (pdfGenerating || !selectedId) ? '#b1c3fb' : '#059669',
+                color: '#fff', cursor: (pdfGenerating || !selectedId) ? 'not-allowed' : 'pointer',
+                fontSize: '0.88rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+              }}>
+                {pdfGenerating ? <FiRefreshCw size={14} /> : <FiEye size={14} />}
+                {pdfGenerating ? 'Génération...' : 'Générer & Ouvrir le PDF'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

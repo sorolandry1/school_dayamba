@@ -17,7 +17,7 @@ class DocumentTemplateSerializer(serializers.ModelSerializer):
     class Meta:
         model = DocumentTemplate
         fields = [
-            'id', 'name', 'document_type', 'style_preset', 'config',
+            'id', 'name', 'document_type', 'style_preset', 'school_type', 'config',
             'is_default', 'created_by_name', 'created_at', 'updated_at',
         ]
         read_only_fields = ['created_by_name', 'created_at', 'updated_at']

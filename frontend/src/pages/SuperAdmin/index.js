@@ -9,9 +9,20 @@ import {
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
+const SCHOOL_TYPE_OPTIONS = [
+  { value: 'all',        label: 'Tous les établissements' },
+  { value: 'primaire',   label: 'École primaire' },
+  { value: 'college',    label: 'Collège' },
+  { value: 'lycee',      label: 'Lycée' },
+  { value: 'universite', label: 'Université' },
+  { value: 'technique',  label: 'Enseignement technique' },
+  { value: 'prive',      label: 'Établissement privé' },
+];
+
 const DEFAULT_SETTINGS = {
   schoolName: 'SchoolPro',
   schoolYear: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
+  schoolType: 'all',
   themeColor: '#1a3c8f',
   accentColor: '#3b5beb',
   logoUrl: '',
@@ -123,6 +134,19 @@ function PlatformTab({ settings, onChange }) {
             <input className="form-control" value={settings.schoolYear} placeholder="ex: 2025-2026"
               onChange={e => onChange({ ...settings, schoolYear: e.target.value })} />
           </div>
+        </div>
+        <div className="form-group" style={{ marginTop: 8 }}>
+          <label>Type d'établissement</label>
+          <select className="form-control" value={settings.schoolType || 'all'}
+            onChange={e => onChange({ ...settings, schoolType: e.target.value })}
+            style={{ maxWidth: 300 }}>
+            {SCHOOL_TYPE_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <small style={{ color: '#667085', fontSize: '0.78rem', marginTop: 4, display: 'block' }}>
+            Utilisé pour sélectionner automatiquement le modèle de document correspondant.
+          </small>
         </div>
       </SectionCard>
 

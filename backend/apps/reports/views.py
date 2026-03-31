@@ -26,15 +26,11 @@ class BulletinPDFView(APIView):
     permission_classes = [IsAdminOrTeacher]
 
     def _get_template_config(self, request):
-        from .models import DocumentTemplate
-        template_id = request.query_params.get('template_id')
-        if template_id:
-            try:
-                return DocumentTemplate.objects.get(id=template_id, document_type='bulletin').config
-            except DocumentTemplate.DoesNotExist:
-                pass
-        tmpl = DocumentTemplate.objects.filter(document_type='bulletin', is_default=True).first()
-        return tmpl.config if tmpl else None
+        return _resolve_template(
+            'bulletin',
+            template_id=request.query_params.get('template_id'),
+            school_type=request.query_params.get('school_type'),
+        )
 
     def get(self, request, student_id):
         try:
@@ -42,7 +38,7 @@ class BulletinPDFView(APIView):
         except Student.DoesNotExist:
             return Response({'error': 'Élève non trouvé.'}, status=404)
 
-        subjects = Subject.objects.filter(classe=student.classe)
+        subjects = Subject.objects.select_related('teacher', 'teacher__user').filter(classe=student.classe)
         rankings_data = self._calculate_rankings(student)
         template_config = self._get_template_config(request)
 
@@ -100,7 +96,7 @@ class BulletinClassePDFView(APIView):
         if not students.exists():
             return Response({'error': 'Aucun élève dans cette classe.'}, status=404)
 
-        subjects = Subject.objects.filter(classe=classe)
+        subjects = Subject.objects.select_related('teacher', 'teacher__user').filter(classe=classe)
 
         # Template support
         from .models import DocumentTemplate
@@ -584,6 +580,31 @@ class ClassStatsView(APIView):
         return Response(result)
 
 
+def _get_platform_school_type():
+    """Return the school_type stored in platform settings (DB or env), defaulting to 'all'."""
+    try:
+        from django.conf import settings as _s
+        return getattr(_s, 'SCHOOL_TYPE', 'all') or 'all'
+    except Exception:
+        return 'all'
+
+
+def _resolve_template(document_type, template_id=None, school_type=None):
+    """Return template config dict or None. Prefers school-type-specific default."""
+    from .models import DocumentTemplate
+    if template_id:
+        tmpl = DocumentTemplate.objects.filter(id=template_id, document_type=document_type).first()
+        if tmpl:
+            return tmpl.config
+    st = school_type or _get_platform_school_type()
+    tmpl = (
+        DocumentTemplate.objects.filter(document_type=document_type, school_type=st, is_default=True).first()
+        or DocumentTemplate.objects.filter(document_type=document_type, school_type='all', is_default=True).first()
+        or DocumentTemplate.objects.filter(document_type=document_type, is_default=True).first()
+    )
+    return tmpl.config if tmpl else None
+
+
 # ────────────────────────────────────────────────────────────────
 # Document Template CRUD
 # ────────────────────────────────────────────────────────────────
@@ -594,10 +615,13 @@ class DocumentTemplateListCreateView(APIView):
     def get(self, request):
         from .models import DocumentTemplate
         from .serializers import DocumentTemplateSerializer
-        doc_type = request.query_params.get('document_type')
+        doc_type    = request.query_params.get('document_type')
+        school_type = request.query_params.get('school_type')
         qs = DocumentTemplate.objects.all()
         if doc_type:
             qs = qs.filter(document_type=doc_type)
+        if school_type:
+            qs = qs.filter(school_type=school_type)
         return Response(DocumentTemplateSerializer(qs, many=True).data)
 
     def post(self, request):
@@ -661,17 +685,11 @@ class ReceiptPDFView(APIView):
         except Payment.DoesNotExist:
             return Response({'error': 'Paiement non trouvé.'}, status=404)
 
-        from .models import DocumentTemplate
-        template_config = {}
-        template_id = request.query_params.get('template_id')
-        if template_id:
-            tmpl = DocumentTemplate.objects.filter(id=template_id, document_type='receipt').first()
-            if tmpl:
-                template_config = tmpl.config
-        else:
-            tmpl = DocumentTemplate.objects.filter(document_type='receipt', is_default=True).first()
-            if tmpl:
-                template_config = tmpl.config
+        template_config = _resolve_template(
+            'receipt',
+            template_id=request.query_params.get('template_id'),
+            school_type=request.query_params.get('school_type'),
+        ) or {}
 
         pdf_buffer = generate_receipt_pdf_templated(payment, template_config)
         response = HttpResponse(pdf_buffer, content_type='application/pdf')
@@ -692,17 +710,11 @@ class StudentCardPDFView(APIView):
         except Student.DoesNotExist:
             return Response({'error': 'Élève non trouvé.'}, status=404)
 
-        from .models import DocumentTemplate
-        template_config = {}
-        template_id = request.query_params.get('template_id')
-        if template_id:
-            tmpl = DocumentTemplate.objects.filter(id=template_id, document_type='card').first()
-            if tmpl:
-                template_config = tmpl.config
-        else:
-            tmpl = DocumentTemplate.objects.filter(document_type='card', is_default=True).first()
-            if tmpl:
-                template_config = tmpl.config
+        template_config = _resolve_template(
+            'card',
+            template_id=request.query_params.get('template_id'),
+            school_type=request.query_params.get('school_type'),
+        ) or {}
 
         pdf_buffer = generate_card_pdf_templated(student, template_config)
         response = HttpResponse(pdf_buffer, content_type='application/pdf')

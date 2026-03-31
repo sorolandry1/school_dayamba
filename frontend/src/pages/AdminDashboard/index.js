@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import {
   FiUsers, FiBookOpen, FiDollarSign, FiCheckCircle,
-  FiClock, FiAlertTriangle
+  FiClock, FiAlertTriangle, FiTrendingDown, FiTrendingUp,
 } from 'react-icons/fi';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 function AdminDashboard() {
   const [stats, setStats] = useState(null);
@@ -38,6 +38,7 @@ function AdminDashboard() {
   const d = stats?.dashboard || {};
   const s = stats?.students || {};
   const p = stats?.payments || {};
+  const exp = d.expenses || {};
 
   const paymentChart = [
     { name: 'Payé', value: p.count_paid || 0 },
@@ -50,6 +51,16 @@ function AdminDashboard() {
     { name: 'Présents', count: d.attendance_today?.present_today || 0 },
     { name: 'Retards', count: d.attendance_today?.late_today || 0 },
     { name: 'Absents', count: d.attendance_today?.absent_today || 0 },
+  ];
+
+  const totalCollected = Number(p.total_collected || 0);
+  const totalExpenses  = Number(exp.total_expenses || 0);
+  const netBalance     = Number(exp.net_balance ?? (totalCollected - totalExpenses));
+
+  const financeData = [
+    { name: 'Recettes', montant: totalCollected },
+    { name: 'Dépenses', montant: totalExpenses },
+    { name: 'Solde net', montant: netBalance },
   ];
 
   return (
@@ -114,6 +125,26 @@ function AdminDashboard() {
             <div className="stat-change">FCFA en retard</div>
           </div>
         </div>
+        <div className="stat-card">
+          <div className="stat-icon" style={{ background: '#fef3c7', color: '#d97706' }}><FiTrendingDown /></div>
+          <div className="stat-info">
+            <h4>Dépenses</h4>
+            <div className="stat-value">{totalExpenses.toLocaleString()}</div>
+            <div className="stat-change">FCFA de dépenses</div>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon" style={{ background: netBalance >= 0 ? '#d1fae5' : '#fef2f2', color: netBalance >= 0 ? '#059669' : '#dc2626' }}>
+            {netBalance >= 0 ? <FiTrendingUp /> : <FiTrendingDown />}
+          </div>
+          <div className="stat-info">
+            <h4>Solde net</h4>
+            <div className="stat-value" style={{ color: netBalance >= 0 ? '#059669' : '#dc2626' }}>
+              {netBalance >= 0 ? '+' : ''}{netBalance.toLocaleString()}
+            </div>
+            <div className="stat-change">FCFA {netBalance >= 0 ? 'excédent' : 'déficit'}</div>
+          </div>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginTop: 8 }}>
@@ -150,6 +181,73 @@ function AdminDashboard() {
                 <Tooltip />
               </PieChart>
             </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* ── COMPTABILITÉ ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginTop: 20 }}>
+        <div className="card">
+          <div className="card-header"><h3>Comptabilité — Vue d'ensemble</h3></div>
+          <div className="card-body">
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={financeData} barSize={40}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f2f4f7" />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} />
+                <Tooltip formatter={v => `${Number(v).toLocaleString()} FCFA`} />
+                <Bar dataKey="montant" radius={[6, 6, 0, 0]}>
+                  {financeData.map((entry, i) => (
+                    <Cell key={i} fill={i === 0 ? '#10b981' : i === 1 ? '#f59e0b' : (netBalance >= 0 ? '#3b5beb' : '#ef4444')} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-header"><h3>Bilan financier</h3></div>
+          <div className="card-body">
+            {[
+              { label: 'Total recettes', value: totalCollected, color: '#10b981', icon: <FiTrendingUp size={18} /> },
+              { label: 'Total dépenses', value: totalExpenses,  color: '#f59e0b', icon: <FiTrendingDown size={18} /> },
+              { label: 'Solde net',      value: netBalance,     color: netBalance >= 0 ? '#3b5beb' : '#ef4444', icon: netBalance >= 0 ? <FiTrendingUp size={18} /> : <FiTrendingDown size={18} /> },
+              { label: 'Paiements en attente', value: Number(p.total_pending || 0), color: '#6366f1', icon: <FiClock size={18} /> },
+            ].map(row => (
+              <div key={row.label} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '12px 0', borderBottom: '1px solid #f1f5f9',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ color: row.color }}>{row.icon}</div>
+                  <span style={{ fontSize: '0.88rem', color: '#344054', fontWeight: 500 }}>{row.label}</span>
+                </div>
+                <span style={{ fontSize: '0.92rem', fontWeight: 800, color: row.color }}>
+                  {row.value >= 0 ? '' : '-'}{Math.abs(row.value).toLocaleString()} FCFA
+                </span>
+              </div>
+            ))}
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: '0.75rem', color: '#98a2b3', marginBottom: 6 }}>
+                Taux de recouvrement
+              </div>
+              <div style={{ background: '#f1f5f9', borderRadius: 999, height: 10, overflow: 'hidden' }}>
+                {(() => {
+                  const total = totalCollected + Number(p.total_pending || 0) + Number(p.total_overdue || 0);
+                  const pct = total > 0 ? Math.min(100, Math.round(totalCollected / total * 100)) : 0;
+                  return (
+                    <div style={{ width: `${pct}%`, height: '100%', background: '#10b981', transition: 'width 0.5s', borderRadius: 999 }} />
+                  );
+                })()}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#667085', marginTop: 4 }}>
+                {(() => {
+                  const total = totalCollected + Number(p.total_pending || 0) + Number(p.total_overdue || 0);
+                  return total > 0 ? `${Math.min(100, Math.round(totalCollected / total * 100))}% des frais perçus` : 'Aucune donnée';
+                })()}
+              </div>
+            </div>
           </div>
         </div>
       </div>

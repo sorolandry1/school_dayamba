@@ -395,22 +395,41 @@ def generate_bulletin_pdf_templated(student, subjects, rankings_data, template_c
 
     # ── Grades Table ──
     if gt.get('show', True):
-        headers = ['Matière']
-        col_widths = [6 * cm]
-        if gt.get('showCoefficient', True):
-            headers.append('Coeff.')
-            col_widths.append(1.8 * cm)
-        headers.append('Moyenne')
-        col_widths.append(2.5 * cm)
-        if gt.get('showWeightedAverage', True):
-            headers.append('Moy. Pond.')
-            col_widths.append(2.5 * cm)
-        if gt.get('showAppreciation', True):
-            headers.append('Appréciation')
-            col_widths.append(4 * cm)
-        if gt.get('showSignatureCol', False):
-            headers.append('Signature')
-            col_widths.append(3 * cm)
+        DEFAULT_COL_ORDER = ['matiere', 'coeff', 'moy', 'moyPond', 'appreciation', 'teacher', 'signature']
+        col_order = gt.get('columnsOrder', DEFAULT_COL_ORDER)
+
+        # Visibility map
+        col_visible = {
+            'matiere':      True,
+            'coeff':        gt.get('showCoefficient', True),
+            'moy':          True,
+            'moyPond':      gt.get('showWeightedAverage', True),
+            'appreciation': gt.get('showAppreciation', True),
+            'teacher':      gt.get('showTeacherName', False),
+            'signature':    gt.get('showSignatureCol', False),
+        }
+        col_header = {
+            'matiere':      'Matière',
+            'coeff':        'Coeff.',
+            'moy':          'Moyenne',
+            'moyPond':      'Moy. Pond.',
+            'appreciation': 'Appréciation',
+            'teacher':      'Professeur',
+            'signature':    'Signature',
+        }
+        col_width_map = {
+            'matiere':      6.0 * cm,
+            'coeff':        1.8 * cm,
+            'moy':          2.5 * cm,
+            'moyPond':      2.5 * cm,
+            'appreciation': 4.0 * cm,
+            'teacher':      3.5 * cm,
+            'signature':    3.0 * cm,
+        }
+
+        visible_cols = [k for k in col_order if col_visible.get(k, False)]
+        headers    = [col_header[k] for k in visible_cols]
+        col_widths = [col_width_map[k] for k in visible_cols]
 
         table_data = [headers]
         total_weighted = 0
@@ -426,17 +445,20 @@ def generate_bulletin_pdf_templated(student, subjects, rankings_data, template_c
                 'Très Bien' if avg >= 16 else 'Bien' if avg >= 14 else
                 'Assez Bien' if avg >= 12 else 'Passable' if avg >= 10 else 'Insuffisant'
             )
-            row = [subject.name]
-            if gt.get('showCoefficient', True):
-                row.append(str(subject.coefficient))
-            row.append(f'{avg}/20')
-            if gt.get('showWeightedAverage', True):
-                row.append(f'{round(avg * coeff, 2)}')
-            if gt.get('showAppreciation', True):
-                row.append(appreciation)
-            if gt.get('showSignatureCol', False):
-                row.append('')
-            table_data.append(row)
+            teacher_name = ''
+            if subject.teacher and subject.teacher.user:
+                teacher_name = subject.teacher.user.get_full_name() or subject.teacher.user.username
+
+            col_value = {
+                'matiere':      subject.name,
+                'coeff':        str(subject.coefficient),
+                'moy':          f'{avg}/20',
+                'moyPond':      f'{round(avg * coeff, 2)}',
+                'appreciation': appreciation,
+                'teacher':      teacher_name,
+                'signature':    '',
+            }
+            table_data.append([col_value[k] for k in visible_cols])
 
         general_avg = round(total_weighted / total_coeff, 2) if total_coeff > 0 else 0
 
@@ -786,13 +808,21 @@ def generate_card_pdf_templated(student, template_config):
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
     ]))
 
-    # Card body
-    info_text = f"""
-<b>{student.full_name}</b><br/>
-Matr.: {student.matricule}<br/>
-Classe: {student.classe.name if student.classe else '-'}<br/>
-{f'Année: {year_name}' if year_name else ''}
-""".strip()
+    # Card body — token-resolved
+    info_lines = []
+    if body_cfg.get('showName', True):
+        info_lines.append(f"<b>{token_ctx.get('{{NOM_PRENOM}}', student.full_name)}</b>")
+    if body_cfg.get('showMatricule', True):
+        info_lines.append(f"Matr.: {token_ctx.get('{{MATRICULE}}', student.matricule)}")
+    if body_cfg.get('showClasse', True):
+        info_lines.append(f"Classe: {token_ctx.get('{{CLASSE}}', student.classe.name if student.classe else '-')}")
+    if body_cfg.get('showYear', True) and year_name:
+        info_lines.append(f"Année: {year_name}")
+    if body_cfg.get('showDateOfBirth', False) and token_ctx.get('{{DATE_NAISSANCE}}'):
+        info_lines.append(f"Né(e): {token_ctx['{{DATE_NAISSANCE}}']}")
+    if sec_cfg.get('showUniqueId', True):
+        info_lines.append(f"ID: {token_ctx.get('{{NUMERO_DOC}}', '')}")
+    info_text = '<br/>'.join(info_lines)
 
     body_para = Paragraph(info_text, ParagraphStyle(
         'CB', parent=styles['Normal'],

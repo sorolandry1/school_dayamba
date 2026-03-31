@@ -13,10 +13,20 @@ class DocumentTemplate(models.Model):
         ('minimalist', 'Minimaliste'),
         ('premium', 'Premium'),
     ]
+    SCHOOL_TYPES = [
+        ('all',        'Tous les établissements'),
+        ('primaire',   'École primaire'),
+        ('college',    'Collège'),
+        ('lycee',      'Lycée'),
+        ('universite', 'Université'),
+        ('technique',  'Enseignement technique'),
+        ('prive',      'Établissement privé'),
+    ]
 
     name = models.CharField(max_length=200)
     document_type = models.CharField(max_length=20, choices=DOCUMENT_TYPES)
     style_preset = models.CharField(max_length=20, choices=STYLE_PRESETS, default='classic')
+    school_type = models.CharField(max_length=20, choices=SCHOOL_TYPES, default='all')
     config = models.JSONField(default=dict)
     is_default = models.BooleanField(default=False)
     created_by = models.ForeignKey(
@@ -36,8 +46,10 @@ class DocumentTemplate(models.Model):
 
     def save(self, *args, **kwargs):
         if self.is_default:
+            # Only one default per (document_type, school_type) pair
             DocumentTemplate.objects.filter(
                 document_type=self.document_type,
+                school_type=self.school_type,
                 is_default=True,
             ).exclude(pk=self.pk).update(is_default=False)
         super().save(*args, **kwargs)

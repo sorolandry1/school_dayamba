@@ -3,11 +3,14 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
+import React, { useState } from 'react';
+import api from '../../services/api';
 import {
   FiHome, FiUsers, FiBook, FiClipboard, FiDollarSign,
   FiBarChart2, FiCamera, FiLogOut, FiGrid,
   FiFileText, FiShield, FiUserCheck, FiActivity, FiUser,
-  FiMessageSquare, FiEdit3, FiGlobe, FiCreditCard, FiSettings, FiLayout
+  FiMessageSquare, FiEdit3, FiGlobe, FiCreditCard, FiSettings, FiLayout,
+  FiKey, FiX, FiEye, FiEyeOff,
 } from 'react-icons/fi';
 
 function getModules() {
@@ -17,11 +20,113 @@ function getModules() {
   } catch { return {}; }
 }
 
+function ChangePasswordModal({ onClose }) {
+  const [form, setForm] = useState({ old_password: '', new_password: '', confirm: '' });
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showOld, setShowOld] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(''); setSuccess('');
+    if (form.new_password !== form.confirm) { setError('Les mots de passe ne correspondent pas.'); return; }
+    if (form.new_password.length < 6) { setError('Le mot de passe doit contenir au moins 6 caractères.'); return; }
+    setLoading(true);
+    try {
+      await api.put('/auth/change-password/', { old_password: form.old_password, new_password: form.new_password });
+      setSuccess('Mot de passe modifié avec succès !');
+      setForm({ old_password: '', new_password: '', confirm: '' });
+      setTimeout(onClose, 1500);
+    } catch (err) {
+      setError(err.response?.data?.old_password?.[0] || err.response?.data?.detail || 'Erreur lors du changement.');
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }} onClick={onClose}>
+      <div style={{
+        background: '#fff', borderRadius: 14, padding: '28px 28px 24px', width: 360, maxWidth: '94vw',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.2)',
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ background: '#e8edff', borderRadius: 8, padding: 8, display: 'flex' }}>
+              <FiKey size={18} color="#3b5beb" />
+            </div>
+            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#1a1a2e' }}>Modifier le mot de passe</h3>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#98a2b3' }}>
+            <FiX size={18} />
+          </button>
+        </div>
+
+        {error && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: '0.83rem', color: '#dc2626', fontWeight: 600 }}>
+            {error}
+          </div>
+        )}
+        {success && (
+          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: '0.83rem', color: '#16a34a', fontWeight: 600 }}>
+            {success}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          {[
+            { key: 'old_password', label: 'Mot de passe actuel', show: showOld, toggle: () => setShowOld(v => !v) },
+            { key: 'new_password', label: 'Nouveau mot de passe', show: showNew, toggle: () => setShowNew(v => !v) },
+            { key: 'confirm',      label: 'Confirmer le nouveau', show: showNew, toggle: () => setShowNew(v => !v) },
+          ].map(f => (
+            <div key={f.key} style={{ marginBottom: 14 }}>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#344054', marginBottom: 5 }}>{f.label}</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={f.show ? 'text' : 'password'}
+                  value={form[f.key]}
+                  onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                  required
+                  style={{ width: '100%', padding: '9px 36px 9px 12px', borderRadius: 8, border: '1px solid #d0d5dd', fontSize: '0.88rem', boxSizing: 'border-box', outline: 'none' }}
+                />
+                <button type="button" onClick={f.toggle} style={{
+                  position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer', color: '#98a2b3', display: 'flex',
+                }}>
+                  {f.show ? <FiEyeOff size={15} /> : <FiEye size={15} />}
+                </button>
+              </div>
+            </div>
+          ))}
+
+          <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+            <button type="button" onClick={onClose} style={{
+              flex: 1, padding: '10px', borderRadius: 8, border: '1px solid #d0d5dd',
+              background: '#fff', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 600, color: '#344054',
+            }}>Annuler</button>
+            <button type="submit" disabled={loading} style={{
+              flex: 2, padding: '10px', borderRadius: 8, border: 'none',
+              background: loading ? '#b1c3fb' : '#3b5beb', color: '#fff',
+              cursor: loading ? 'not-allowed' : 'pointer', fontSize: '0.88rem', fontWeight: 700,
+            }}>
+              {loading ? 'Enregistrement...' : 'Changer le mot de passe'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function Sidebar({ isOpen, onClose }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const modules = getModules();
+  const [showPwdModal, setShowPwdModal] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -164,11 +269,16 @@ function Sidebar({ isOpen, onClose }) {
           <div className="sidebar-user-name">{user?.first_name} {user?.last_name}</div>
           <div className="sidebar-user-role">{t(`sidebar.roles.${user?.role}`, { defaultValue: user?.role })}</div>
         </div>
+        <button onClick={() => setShowPwdModal(true)} title="Modifier le mot de passe"
+          style={{ color: 'rgba(255,255,255,0.5)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 5px' }}>
+          <FiKey size={16} />
+        </button>
         <button onClick={handleLogout} className="btn-icon" title={t('sidebar.logout')}
           style={{ color: 'rgba(255,255,255,0.5)', background: 'none', border: 'none' }}>
           <FiLogOut size={18} />
         </button>
       </div>
+      {showPwdModal && <ChangePasswordModal onClose={() => setShowPwdModal(false)} />}
     </aside>
   );
 }
