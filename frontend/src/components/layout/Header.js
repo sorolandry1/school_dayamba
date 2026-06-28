@@ -25,8 +25,8 @@ function Header({ onMenuToggle }) {
   return (
     <header className="top-header">
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-        <button className="btn-icon btn-secondary" onClick={onMenuToggle}
-          style={{ display: 'none' }}
+        <button className="btn-icon btn-secondary mobile-menu-btn" onClick={onMenuToggle}
+          aria-label="Ouvrir le menu"
           id="menu-toggle">
           <FiMenu size={20} />
         </button>

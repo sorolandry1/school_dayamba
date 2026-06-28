@@ -272,6 +272,10 @@ EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'SchoolPro <noreply@schoolpro.local>')
 SCHOOL_NAME = os.environ.get('SCHOOL_NAME', 'SchoolPro')
 
+# ─── Capacité de l'établissement ──────────────────────────────────────────────
+# Nombre maximal d'élèves actifs qu'une école peut contenir.
+MAX_STUDENTS_PER_SCHOOL = int(os.environ.get('MAX_STUDENTS_PER_SCHOOL', '7000'))
+
 
 # ─── Journalisation ───────────────────────────────────────────────────────────
 LOGS_DIR = BASE_DIR / 'logs'

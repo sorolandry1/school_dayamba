@@ -17,6 +17,7 @@ const emptyForm = {
 function Students() {
   const navigate = useNavigate();
   const [students, setStudents]         = useState([]);
+  const [stats, setStats]               = useState(null);   // { total, capacity, capacity_remaining }
   const [classes, setClasses]           = useState([]);
   const [loading, setLoading]           = useState(true);
   const [search, setSearch]             = useState('');
@@ -44,7 +45,12 @@ function Students() {
     finally { setLoading(false); }
   }, [search, filterClasse, filterPayment]);
 
+  const fetchStats = useCallback(() => {
+    api.get('/students/stats/').then(r => setStats(r.data)).catch(() => {});
+  }, []);
+
   useEffect(() => { fetchStudents(); }, [fetchStudents]);
+  useEffect(() => { fetchStats(); }, [fetchStats]);
 
   useEffect(() => {
     api.get('/classes/current_year/').then(r => setClasses(r.data.results || r.data)).catch(() => {});
@@ -79,7 +85,12 @@ function Students() {
       setForm(emptyForm);
       setPhotoPreview(null);
       fetchStudents();
-    } catch (err) { alert('Erreur: ' + JSON.stringify(err.response?.data)); }
+      fetchStats();
+    } catch (err) {
+      const data = err.response?.data;
+      const msg = data?.detail || (typeof data === 'object' ? JSON.stringify(data) : data) || err.message;
+      alert('Erreur: ' + msg);
+    }
   };
 
   const handleEdit = (student) => {
@@ -106,6 +117,7 @@ function Students() {
     if (!window.confirm('Supprimer cet élève ?')) return;
     await api.delete(`/students/${id}/`);
     fetchStudents();
+    fetchStats();
   };
 
   const handleViewProfile = (student) => {
@@ -124,7 +136,18 @@ function Students() {
       <div className="page-header">
         <div>
           <h2>Gestion des Élèves</h2>
-          <p>{students.length} élèves enregistrés</p>
+          {stats ? (
+            <p style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span><strong>{stats.total}</strong> / {stats.capacity} élèves actifs</span>
+              <span className={`badge ${stats.capacity_remaining === 0 ? 'badge-danger' : stats.capacity_remaining <= 200 ? 'badge-warning' : 'badge-success'}`}>
+                {stats.capacity_remaining === 0
+                  ? 'Capacité maximale atteinte'
+                  : `${stats.capacity_remaining} places restantes`}
+              </span>
+            </p>
+          ) : (
+            <p>{students.length} élèves enregistrés</p>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
@@ -136,6 +159,8 @@ function Students() {
           </button>
           <button
             className="btn btn-primary"
+            disabled={stats?.capacity_remaining === 0}
+            title={stats?.capacity_remaining === 0 ? 'Capacité maximale de l\'établissement atteinte' : ''}
             onClick={() => { setEditing(null); setForm(emptyForm); setPhotoPreview(null); setShowModal(true); }}
           >
             <FiPlus /> Nouvel élève

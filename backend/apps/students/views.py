@@ -3,15 +3,27 @@ import io
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from django.conf import settings
 from django.http import HttpResponse
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from apps.users.permissions import IsAdmin, IsAdminOrReadOnly
 from utils.qr_generator import generate_qr_for_student
 from .models import Student
 from .serializers import StudentListSerializer, StudentDetailSerializer, StudentCreateSerializer
+
+
+def active_student_count() -> int:
+    """Nombre d'élèves actifs actuellement inscrits dans l'établissement."""
+    return Student.objects.filter(is_active=True).count()
+
+
+def remaining_capacity() -> int:
+    """Places restantes avant d'atteindre la capacité maximale de l'école."""
+    return max(0, settings.MAX_STUDENTS_PER_SCHOOL - active_student_count())
 
 # ── Colonnes attendues dans le fichier d'import ───────────────────────────────
 IMPORT_COLUMNS = [
@@ -46,6 +58,13 @@ class StudentViewSet(viewsets.ModelViewSet):
         return StudentDetailSerializer
 
     def perform_create(self, serializer):
+        # Plafond de capacité de l'établissement (élèves actifs)
+        if active_student_count() >= settings.MAX_STUDENTS_PER_SCHOOL:
+            raise ValidationError({
+                'detail': f"Capacité maximale atteinte : l'établissement ne peut "
+                          f"contenir que {settings.MAX_STUDENTS_PER_SCHOOL} élèves actifs. "
+                          f"Désactivez des élèves existants pour libérer des places."
+            })
         student = serializer.save()
         generate_qr_for_student(student)
 
@@ -248,6 +267,15 @@ class StudentViewSet(viewsets.ModelViewSet):
         skipped_count = 0
         errors = []
 
+        # Places restantes avant d'atteindre la capacité maximale de l'école
+        slots = remaining_capacity()
+        if slots <= 0:
+            return Response({
+                'error': f"Capacité maximale atteinte : l'établissement contient déjà "
+                         f"{settings.MAX_STUDENTS_PER_SCHOOL} élèves actifs. "
+                         f"Aucun nouvel élève ne peut être importé."
+            }, status=400)
+
         for row_num, row in enumerate(rows, start=2):   # row 1 = header
             # Normalize keys
             row = {k.strip().lower(): (v or '').strip() for k, v in row.items()}
@@ -310,6 +338,16 @@ class StudentViewSet(viewsets.ModelViewSet):
                 skipped_count += 1
                 continue
 
+            # Capacité maximale de l'établissement atteinte
+            if slots <= 0:
+                errors.append({
+                    'row': row_num,
+                    'message': f'Capacité maximale de {settings.MAX_STUDENTS_PER_SCHOOL} '
+                               f'élèves atteinte — ligne non importée.',
+                    'data': dict(list(row.items())[:4]),
+                })
+                continue
+
             # Create student
             try:
                 student = Student(
@@ -328,6 +366,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                 student.save()
                 generate_qr_for_student(student)
                 created_count += 1
+                slots -= 1
             except Exception as exc:
                 errors.append({
                     'row': row_num,
@@ -401,6 +440,8 @@ class StudentViewSet(viewsets.ModelViewSet):
             'total': total,
             'by_gender': by_gender,
             'by_payment': by_payment,
+            'capacity': settings.MAX_STUDENTS_PER_SCHOOL,
+            'capacity_remaining': max(0, settings.MAX_STUDENTS_PER_SCHOOL - total),
         })
 
 

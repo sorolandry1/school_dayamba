@@ -4,14 +4,14 @@
   "private": true,
   "dependencies": {
     "ajv": "^8.18.0",
-    "axios": "1.7.9",
+    "axios": "^1.14.0",
     "html5-qrcode": "^2.3.8",
     "i18next": "^25.10.10",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-i18next": "^16.6.6",
     "react-icons": "5.4.0",
-    "react-router-dom": "6.28.0",
+    "react-router-dom": "^6.30.3",
     "react-scripts": "5.0.1",
     "react-toastify": "10.0.6",
     "recharts": "2.13.3"

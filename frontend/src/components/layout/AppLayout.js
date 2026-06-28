@@ -9,6 +9,13 @@ function AppLayout() {
   return (
     <div className="app-layout">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      {sidebarOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
       <Header onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
       <main className="main-content">
         <Outlet />

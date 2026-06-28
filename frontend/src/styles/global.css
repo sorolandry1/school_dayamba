@@ -300,6 +300,25 @@ input, select, textarea { font-family: inherit; }
   gap: 12px;
 }
 
+/* Bouton menu hamburger — masqué sur desktop, visible sur mobile */
+.mobile-menu-btn { display: none; }
+
+/* Voile d'arrière-plan quand la sidebar est ouverte (mobile) */
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(16, 24, 40, 0.5);
+  backdrop-filter: blur(2px);
+  z-index: 90;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .header-btn {
   display: flex;
   align-items: center;
@@ -902,6 +921,15 @@ select.form-control {
     grid-template-columns: 1fr !important;
   }
 
+  /* 3-4 column grids fall to 2 columns on tablet */
+  [style*="grid-template-columns: repeat(3"],
+  [style*="grid-template-columns: repeat(4"],
+  [style*="grid-template-columns:repeat(3"],
+  [style*="grid-template-columns:repeat(4"],
+  [style*="grid-template-columns: 1fr 1fr 1fr"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
@@ -911,11 +939,26 @@ select.form-control {
 @media (max-width: 768px) {
   :root { --header-height: 56px; }
 
+  /* Bouton hamburger visible + voile cliquable */
+  .mobile-menu-btn { display: flex; }
+  .sidebar-backdrop { display: block; }
+
   /* Sidebar hidden off-screen until toggled */
   .sidebar { transform: translateX(-100%); }
   .sidebar.open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,0.25); }
 
   .top-header { left: 0; padding: 0 16px; }
+
+  /* Toute grille inline multi-colonnes repasse en 1 colonne */
+  [style*="grid-template-columns: 1fr 1fr"],
+  [style*="grid-template-columns: 1fr 320px"],
+  [style*="grid-template-columns: repeat(3"],
+  [style*="grid-template-columns: repeat(4"],
+  [style*="grid-template-columns:repeat(3"],
+  [style*="grid-template-columns:repeat(4"],
+  [style*="grid-template-columns: 1fr 1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
 
   .main-content {
     margin-left: 0;

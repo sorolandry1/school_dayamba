@@ -468,6 +468,9 @@ DEFAULT_FROM_EMAIL=SchoolPro <noreply@schoolpro.local>
 # Nom de l'établissement (apparaît dans les emails)
 SCHOOL_NAME=Mon École
 
+# Capacité maximale d'élèves actifs par école (défaut : 7000)
+MAX_STUDENTS_PER_SCHOOL=7000
+
 # Cache Redis (optionnel — LocMem si absent)
 REDIS_URL=redis://localhost:6379/0
 
