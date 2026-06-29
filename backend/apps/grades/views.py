@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
 from django.db.models import Avg, Count
-from apps.users.permissions import IsAdminOrTeacher
+from apps.users.permissions import CanEditGrades
 from .models import Grade
 from .serializers import GradeSerializer, GradeCreateSerializer, BulkGradeSerializer
 import logging
@@ -16,7 +16,7 @@ class GradeViewSet(viewsets.ModelViewSet):
     queryset = Grade.objects.select_related(
         'student', 'subject', 'subject__classe', 'created_by'
     ).all()
-    permission_classes = [IsAdminOrTeacher]
+    permission_classes = [CanEditGrades]
     filterset_fields = ['student', 'subject', 'type_evaluation', 'subject__classe']
     search_fields = ['student__first_name', 'student__last_name']
     ordering_fields = ['date', 'value']

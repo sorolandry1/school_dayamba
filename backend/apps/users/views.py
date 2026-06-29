@@ -207,12 +207,13 @@ class PublicInvitationView(APIView):
         if inv.role == 'TEACHER':
             from apps.subjects.models import Subject
             subjects = Subject.objects.select_related('classe').order_by('classe__name', 'name')
+            # On n'expose pas le professeur actuel d'une matière sur la page
+            # publique d'inscription (confidentialité)
             data['subjects'] = [
                 {
                     'id': s.id,
                     'name': s.name,
                     'classe_name': s.classe.name if s.classe else None,
-                    'taken_by': s.teacher.full_name if s.teacher else None,
                 }
                 for s in subjects
             ]

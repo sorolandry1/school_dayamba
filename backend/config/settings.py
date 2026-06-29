@@ -160,6 +160,12 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 STORAGES = {
+    # Stockage par défaut des fichiers media (photos élèves, QR codes, etc.).
+    # Obligatoire depuis Django 4.2 : sans cette clé, tout ImageField.save()
+    # lève InvalidStorageError.
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },

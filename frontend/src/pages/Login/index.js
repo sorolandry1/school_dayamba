@@ -21,6 +21,7 @@ function Login() {
       const user = await login(username, password);
       if (user.role === 'TEACHER') navigate('/teacher');
       else if (user.role === 'AGENT') navigate('/scan');
+      else if (user.role === 'EDUCATEUR') navigate('/educator');
       else navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.error || t('login.error_default'));

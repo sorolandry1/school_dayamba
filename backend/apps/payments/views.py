@@ -2,7 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Sum, Count, Q
-from apps.users.permissions import IsAdmin, IsAdminOrReadOnly
+from apps.users.permissions import IsAdmin, IsAdminOrReadOnly, IsCommunicationStaff
 from utils.sms_service import send_sms
 from utils.email_service import send_bulk_email
 from .models import Payment, Expense
@@ -116,7 +116,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
 class BroadcastSMSView(viewsets.ViewSet):
     """Send SMS to all parents of a given class or all active students."""
-    permission_classes = [IsAdmin]
+    permission_classes = [IsCommunicationStaff]
 
     @action(detail=False, methods=['post'])
     def send(self, request):

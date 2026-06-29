@@ -127,10 +127,10 @@ class InvitationSerializer(serializers.ModelSerializer):
         return obj.used_by.get_full_name() if obj.used_by else None
 
     def validate_role(self, value):
-        # Le directeur ne peut inviter que des professeurs ou des agents
-        if value not in ('TEACHER', 'AGENT'):
+        # Le directeur ne peut inviter que des professeurs, agents ou éducateurs
+        if value not in ('TEACHER', 'AGENT', 'EDUCATEUR'):
             raise serializers.ValidationError(
-                "Seuls les rôles Professeur et Agent peuvent être invités."
+                "Seuls les rôles Professeur, Agent et Éducateur peuvent être invités."
             )
         return value
 

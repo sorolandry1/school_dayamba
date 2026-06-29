@@ -612,6 +612,7 @@ function ImportModal({ onClose, onSuccess }) {
                   <FiCheck size={18} />
                   {result.created} élève(s) importé(s) avec succès.
                   {result.skipped > 0 && ` ${result.skipped} doublon(s) ignoré(s).`}
+                  {result.classes_created > 0 && ` ${result.classes_created} classe(s) créée(s) automatiquement.`}
                 </div>
               )}
 

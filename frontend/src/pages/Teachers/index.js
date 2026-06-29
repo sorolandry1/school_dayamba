@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
-import { FiSearch, FiEye, FiX } from 'react-icons/fi';
+import { FiSearch, FiEye, FiX, FiGrid, FiSave } from 'react-icons/fi';
 
 function Teachers() {
   const [teachers, setTeachers] = useState([]);
@@ -8,6 +8,11 @@ function Teachers() {
   const [search, setSearch] = useState('');
   const [showProfile, setShowProfile] = useState(false);
   const [profileTeacher, setProfileTeacher] = useState(null);
+  // Affectation de classes
+  const [classes, setClasses] = useState([]);
+  const [assignTarget, setAssignTarget] = useState(null);
+  const [assignIds, setAssignIds] = useState([]);
+  const [savingAssign, setSavingAssign] = useState(false);
 
   const fetchTeachers = useCallback(async () => {
     try {
@@ -20,6 +25,36 @@ function Teachers() {
   }, [search]);
 
   useEffect(() => { fetchTeachers(); }, [fetchTeachers]);
+
+  useEffect(() => {
+    api.get('/classes/', { params: { page_size: 500 } })
+      .then(r => setClasses(r.data.results || r.data)).catch(() => {});
+  }, []);
+
+  const classesByLevel = classes.reduce((acc, c) => {
+    const key = c.level_name || 'Autres';
+    (acc[key] = acc[key] || []).push(c);
+    return acc;
+  }, {});
+
+  const openAssign = (teacher) => {
+    setAssignTarget(teacher);
+    setAssignIds(teacher.assigned_class_ids || []);
+  };
+
+  const toggleAssign = (id) => setAssignIds(prev =>
+    prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const saveAssign = async () => {
+    setSavingAssign(true);
+    try {
+      await api.post(`/teachers/${assignTarget.id}/assign_classes/`, { class_ids: assignIds });
+      setAssignTarget(null);
+      fetchTeachers();
+    } catch (err) {
+      alert('Erreur: ' + JSON.stringify(err.response?.data));
+    } finally { setSavingAssign(false); }
+  };
 
   const handleViewProfile = (teacher) => {
     setProfileTeacher(teacher);
@@ -57,13 +92,14 @@ function Teachers() {
                   <th>Contact</th>
                   <th>Email</th>
                   <th>Matières enseignées</th>
+                  <th>Classes affectées</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {teachers.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: 40, color: '#98a2b3' }}>
+                    <td colSpan="7" style={{ textAlign: 'center', padding: 40, color: '#98a2b3' }}>
                       Aucun professeur trouvé
                     </td>
                   </tr>
@@ -79,13 +115,31 @@ function Teachers() {
                         : '-'}
                     </td>
                     <td>
-                      <button
-                        className="btn btn-sm btn-secondary"
-                        title="Voir profil"
-                        onClick={() => handleViewProfile(t)}
-                      >
-                        <FiEye size={14} />
-                      </button>
+                      {t.assigned_classes && t.assigned_classes.length > 0 ? (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {t.assigned_classes.map(c => (
+                            <span key={c.id} className="badge badge-info">{c.name}</span>
+                          ))}
+                        </div>
+                      ) : <span style={{ color: '#98a2b3' }}>-</span>}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          title="Voir profil"
+                          onClick={() => handleViewProfile(t)}
+                        >
+                          <FiEye size={14} />
+                        </button>
+                        <button
+                          className="btn btn-sm btn-primary"
+                          title="Affecter des classes"
+                          onClick={() => openAssign(t)}
+                        >
+                          <FiGrid size={14} /> Classes
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -94,6 +148,62 @@ function Teachers() {
           )}
         </div>
       </div>
+
+      {/* Modal affectation de classes */}
+      {assignTarget && (
+        <div className="modal-overlay" onClick={() => setAssignTarget(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 560 }}>
+            <div className="modal-header">
+              <h3><FiGrid style={{ marginRight: 8 }} />Affecter des classes</h3>
+              <button className="btn-icon" onClick={() => setAssignTarget(null)}><FiX /></button>
+            </div>
+            <div className="modal-body">
+              <p style={{ color: '#667085', marginTop: 0 }}>
+                Professeur : <strong>{assignTarget.last_name} {assignTarget.first_name}</strong>
+                {assignIds.length > 0 && (
+                  <span style={{ marginLeft: 8, fontSize: '0.8rem', fontWeight: 600, color: '#10b981' }}>
+                    {assignIds.length} classe(s) sélectionnée(s)
+                  </span>
+                )}
+              </p>
+              {classes.length === 0 ? (
+                <p style={{ color: '#98a2b3' }}>Aucune classe disponible. Créez d'abord des classes.</p>
+              ) : (
+                <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8, padding: 8 }}>
+                  {Object.entries(classesByLevel).map(([levelName, list]) => (
+                    <div key={levelName} style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: '#98a2b3', margin: '4px 0' }}>
+                        {levelName}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+                        {list.map(c => {
+                          const checked = assignIds.includes(c.id);
+                          return (
+                            <label key={c.id} style={{
+                              display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem',
+                              cursor: 'pointer', padding: '3px 4px', borderRadius: 6,
+                              background: checked ? '#e0f2fe' : 'transparent',
+                            }}>
+                              <input type="checkbox" checked={checked} onChange={() => toggleAssign(c.id)} />
+                              {c.name}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setAssignTarget(null)}>Annuler</button>
+              <button className="btn btn-primary" onClick={saveAssign} disabled={savingAssign}>
+                <FiSave size={14} /> {savingAssign ? 'Enregistrement...' : 'Enregistrer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal profil professeur */}
       {showProfile && profileTeacher && (

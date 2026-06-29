@@ -1,9 +1,50 @@
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 
 class IsAdmin(BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role in ['ADMIN', 'DIRECTOR']
+
+
+class CanEditGrades(BasePermission):
+    """Notes : lecture pour ADMIN/DIRECTOR/TEACHER ; écriture réservée aux
+    PROFESSEURS (le directeur est en lecture seule). L'admin reste autorisé
+    en écriture pour la maintenance technique."""
+    def has_permission(self, request, view):
+        u = request.user
+        if not u.is_authenticated:
+            return False
+        if request.method in SAFE_METHODS:
+            return u.role in ['ADMIN', 'DIRECTOR', 'TEACHER']
+        return u.role in ['TEACHER', 'ADMIN']
+
+
+class IsAttendanceStaff(BasePermission):
+    """Présences/assiduité : lecture pour tout utilisateur authentifié ;
+    écriture pour ADMIN, DIRECTOR et ÉDUCATEUR."""
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        if request.method in SAFE_METHODS:
+            return True
+        return request.user.role in ['ADMIN', 'DIRECTOR', 'EDUCATEUR']
+
+
+class IsCommunicationStaff(BasePermission):
+    """Communication avec les parents : ADMIN, DIRECTOR et ÉDUCATEUR."""
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role in ['ADMIN', 'DIRECTOR', 'EDUCATEUR']
+
+
+class IsClasseStaff(BasePermission):
+    """Classes/niveaux/années : lecture pour tout utilisateur authentifié ;
+    création/modification pour ADMIN, DIRECTOR et ÉDUCATEUR."""
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        if request.method in SAFE_METHODS:
+            return True
+        return request.user.role in ['ADMIN', 'DIRECTOR', 'EDUCATEUR']
 
 
 class IsDirector(BasePermission):

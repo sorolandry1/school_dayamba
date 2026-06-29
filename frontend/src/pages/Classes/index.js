@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import {
   FiUsers, FiPrinter, FiBook, FiGrid,
-  FiAward, FiAlertCircle, FiPlus, FiX
+  FiAward, FiAlertCircle, FiPlus, FiX, FiTrash2, FiLock
 } from 'react-icons/fi';
 
 const LEVELS = ['6ème', '5ème', '4ème', '3ème', '2nde', '1ère', 'Terminale'];
@@ -36,6 +36,12 @@ export default function Classes() {
   const [formCapacity, setFormCapacity] = useState(50);
   const [saving, setSaving]       = useState(false);
   const [formError, setFormError] = useState('');
+
+  // Suppression de classe (confirmation par mot de passe)
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -126,6 +132,30 @@ export default function Classes() {
     }
   };
 
+  const openDeleteModal = (e, classe) => {
+    e.stopPropagation();
+    setDeleteTarget(classe);
+    setDeletePassword('');
+    setDeleteError('');
+  };
+
+  const handleDeleteClasse = async (e) => {
+    e.preventDefault();
+    if (!deletePassword) { setDeleteError('Veuillez saisir votre mot de passe.'); return; }
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await api.delete(`/classes/${deleteTarget.id}/`, { data: { password: deletePassword } });
+      setClasses(prev => prev.filter(c => c.id !== deleteTarget.id));
+      if (selectedClasse?.id === deleteTarget.id) setSelectedClasse(null);
+      setDeleteTarget(null);
+    } catch (err) {
+      setDeleteError(err.response?.data?.error || 'Suppression impossible.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const openAddModal = (e, levelName) => {
     e.stopPropagation();
     setModalLevel(levelName);
@@ -138,18 +168,20 @@ export default function Classes() {
   const handleAddClasse = async (e) => {
     e.preventDefault();
     if (!formName.trim()) { setFormError('Le nom est requis.'); return; }
-    if (!levelsMap[modalLevel]) { setFormError('Niveau introuvable.'); return; }
-    if (!currentYearId) { setFormError('Aucune année académique courante.'); return; }
 
     setSaving(true);
     setFormError('');
     try {
-      const res = await api.post('/classes/', {
+      // On envoie le nom du niveau ; le backend résout le niveau et l'année
+      // courante (création automatique si nécessaire).
+      const payload = {
         name: formName.trim(),
-        level: levelsMap[modalLevel],
-        academic_year: currentYearId,
+        level_name: modalLevel,
         capacity: Number(formCapacity) || 50,
-      });
+      };
+      if (levelsMap[modalLevel]) payload.level = levelsMap[modalLevel];
+      if (currentYearId) payload.academic_year = currentYearId;
+      const res = await api.post('/classes/', payload);
       // Ajouter la nouvelle classe à l'état local
       setClasses(prev => [...prev, res.data]);
       setModal(false);
@@ -167,10 +199,9 @@ export default function Classes() {
   };
 
   const totalStudents  = classes.reduce((acc, c) => acc + (c.student_count ?? 0), 0);
-  const sortedLevels   = LEVELS.filter(l => {
-    // Toujours afficher les niveaux existants + permettre l'ajout depuis la grille
-    return classes.some(c => (c.level_name || c.level?.name) === l) || levelsMap[l];
-  });
+  // On affiche toujours tous les niveaux pour permettre la création même sur
+  // une base vierge (le backend crée le niveau/l'année au besoin).
+  const sortedLevels   = LEVELS;
 
   const paymentBadge = (status) => {
     const map    = { PAID: ['#d1fae5', '#065f46', 'Payé'], PENDING: ['#fef3c7', '#92400e', 'En attente'], OVERDUE: ['#fee2e2', '#991b1b', 'En retard'] };
@@ -458,6 +489,17 @@ export default function Classes() {
                             <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.68rem' }}>Absents</div>
                           </div>
                         )}
+                        <button
+                          onClick={(e) => openDeleteModal(e, selectedClasse)}
+                          title={`Supprimer la classe ${selectedClasse.name}`}
+                          style={{
+                            background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 8,
+                            padding: '0 14px', color: 'white', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 600,
+                          }}
+                        >
+                          <FiTrash2 size={15} /> Supprimer
+                        </button>
                       </div>
                     </div>
 
@@ -595,6 +637,93 @@ export default function Classes() {
         <div className="card" style={{ padding: 48, textAlign: 'center', color: 'var(--gray-400)' }}>
           <FiGrid size={40} style={{ marginBottom: 12 }} />
           <p>Aucune classe disponible. Cliquez sur <strong>+</strong> pour en créer.</p>
+        </div>
+      )}
+
+      {/* ─── Modal Supprimer une classe (confirmation mot de passe) ─── */}
+      {deleteTarget && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div onClick={e => e.stopPropagation()} style={{
+            background: 'white', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: 420,
+            boxShadow: '0 20px 60px rgba(0,0,0,0.2)', overflow: 'hidden',
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, #ef4444, #991b1b)', padding: '16px 20px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <div>
+                <div style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>Supprimer la classe</div>
+                <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.8rem' }}>{deleteTarget.name}</div>
+              </div>
+              <button onClick={() => setDeleteTarget(null)} style={{
+                background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '50%',
+                width: 32, height: 32, cursor: 'pointer', color: 'white',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <FiX size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleDeleteClasse} style={{ padding: 24 }}>
+              <p style={{ fontSize: '0.88rem', color: 'var(--gray-600)', marginTop: 0 }}>
+                Cette action est <strong>irréversible</strong>. Les élèves de cette classe
+                seront détachés (sans classe). Confirmez avec votre mot de passe.
+              </p>
+
+              {deleteError && (
+                <div style={{
+                  background: '#fee2e2', color: '#991b1b', padding: '10px 14px',
+                  borderRadius: 8, fontSize: '0.85rem', marginBottom: 16,
+                }}>
+                  {deleteError}
+                </div>
+              )}
+
+              <div className="form-group">
+                <label style={{ fontWeight: 600, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  <FiLock size={13} /> Votre mot de passe <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <input
+                  type="password"
+                  className="form-control"
+                  value={deletePassword}
+                  onChange={e => setDeletePassword(e.target.value)}
+                  placeholder="Saisissez votre mot de passe"
+                  autoFocus
+                  autoComplete="current-password"
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 24 }}>
+                <button type="button" onClick={() => setDeleteTarget(null)} style={{
+                  padding: '9px 20px', background: 'var(--gray-100)', color: 'var(--gray-700)',
+                  border: 'none', borderRadius: 'var(--radius-md)', fontWeight: 600,
+                  fontSize: '0.85rem', cursor: 'pointer',
+                }}>
+                  Annuler
+                </button>
+                <button type="submit" disabled={deleting} style={{
+                  padding: '9px 20px', background: deleting ? 'var(--gray-300)' : 'linear-gradient(135deg, #ef4444, #991b1b)',
+                  color: 'white', border: 'none', borderRadius: 'var(--radius-md)', fontWeight: 600,
+                  fontSize: '0.85rem', cursor: deleting ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  {deleting ? (
+                    <><div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Suppression...</>
+                  ) : (
+                    <><FiTrash2 size={14} /> Supprimer définitivement</>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

@@ -1,18 +1,68 @@
-from rest_framework import viewsets
+from datetime import date
+from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from apps.users.permissions import IsAdmin, IsAdminOrReadOnly
+from apps.users.permissions import IsAdmin, IsClasseStaff
 from .models import AcademicYear, Level, Classe
 from .serializers import (
     AcademicYearSerializer, LevelSerializer,
     ClasseSerializer, ClasseDetailSerializer
 )
 
+# Ordre d'affichage des niveaux courants (noms tels qu'utilisés par le frontend)
+_LEVEL_ORDER = {
+    '6ème': 1, '5ème': 2, '4ème': 3, '3ème': 4,
+    '2nde': 5, '1ère': 6, 'Terminale': 7,
+}
+
+
+def _current_or_new_year():
+    """Retourne l'année académique courante, en la créant si aucune n'existe."""
+    year = AcademicYear.objects.filter(is_current=True).first()
+    if year:
+        return year
+    today = date.today()
+    start_y = today.year if today.month >= 9 else today.year - 1
+    name = f"{start_y}-{start_y + 1}"
+    year, _ = AcademicYear.objects.get_or_create(
+        name=name,
+        defaults={
+            'start_date': date(start_y, 10, 1),
+            'end_date': date(start_y + 1, 7, 31),
+            'is_current': True,
+        },
+    )
+    if not year.is_current:
+        year.is_current = True
+        year.save()
+    return year
+
+
+def _get_or_create_level(name):
+    name = (name or '').strip()
+    level, _ = Level.objects.get_or_create(
+        name=name, defaults={'order': _LEVEL_ORDER.get(name, 99)}
+    )
+    return level
+
+
+def _infer_level_name(classe_name):
+    """Déduit le nom du niveau à partir d'un nom de classe.
+    Ex. « 6ème A » → « 6ème », « Terminale D » → « Terminale »."""
+    classe_name = (classe_name or '').strip()
+    # Correspondance directe avec un niveau connu en préfixe (accents inclus)
+    for lvl in sorted(_LEVEL_ORDER, key=len, reverse=True):
+        if classe_name.lower().startswith(lvl.lower()):
+            return lvl
+    # Sinon : tout sauf le dernier mot (la section), ou le nom complet
+    parts = classe_name.split()
+    return ' '.join(parts[:-1]) if len(parts) >= 2 else classe_name
+
 
 class AcademicYearViewSet(viewsets.ModelViewSet):
     queryset = AcademicYear.objects.all()
     serializer_class = AcademicYearSerializer
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsClasseStaff]
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def set_current(self, request, pk=None):
@@ -25,13 +75,13 @@ class AcademicYearViewSet(viewsets.ModelViewSet):
 class LevelViewSet(viewsets.ModelViewSet):
     queryset = Level.objects.all()
     serializer_class = LevelSerializer
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsClasseStaff]
     pagination_class = None
 
 
 class ClasseViewSet(viewsets.ModelViewSet):
     queryset = Classe.objects.select_related('level', 'academic_year').all()
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsClasseStaff]
     filterset_fields = ['level', 'academic_year']
     search_fields = ['name']
 
@@ -39,6 +89,31 @@ class ClasseViewSet(viewsets.ModelViewSet):
         if self.action == 'retrieve':
             return ClasseDetailSerializer
         return ClasseSerializer
+
+    def create(self, request, *args, **kwargs):
+        """Création autonome : si l'année ou le niveau ne sont pas fournis,
+        on résout l'année courante (créée au besoin) et le niveau via `level_name`.
+        Permet de créer une classe même sur une base vierge."""
+        data = request.data.copy()
+        if not data.get('academic_year'):
+            data['academic_year'] = _current_or_new_year().id
+        if not data.get('level') and data.get('level_name'):
+            data['level'] = _get_or_create_level(data.get('level_name')).id
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def destroy(self, request, *args, **kwargs):
+        """Suppression protégée : l'utilisateur doit confirmer avec son mot de passe."""
+        password = request.data.get('password') or request.query_params.get('password') or ''
+        if not password or not request.user.check_password(password):
+            return Response(
+                {'error': 'Mot de passe incorrect. Suppression annulée.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=False, methods=['get'])
     def current_year(self, request):

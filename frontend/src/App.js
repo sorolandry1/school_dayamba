@@ -31,6 +31,7 @@ import LessonLog from './pages/LessonLog';
 import StudentCards from './pages/StudentCards';
 import SuperAdmin from './pages/SuperAdmin';
 import DocumentEditor from './pages/DocumentEditor';
+import EducatorDashboard from './pages/EducatorDashboard';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, isAuthenticated } = useAuth();
@@ -39,6 +40,7 @@ function ProtectedRoute({ children, allowedRoles }) {
     // Redirect to appropriate dashboard
     if (user.role === 'TEACHER') return <Navigate to="/teacher" replace />;
     if (user.role === 'AGENT') return <Navigate to="/scan" replace />;
+    if (user.role === 'EDUCATEUR') return <Navigate to="/educator" replace />;
     return <Navigate to="/dashboard" replace />;
   }
   return children;
@@ -51,7 +53,12 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={
         isAuthenticated ? (
-          <Navigate to={user?.role === 'TEACHER' ? '/teacher' : user?.role === 'AGENT' ? '/scan' : '/dashboard'} replace />
+          <Navigate to={
+            user?.role === 'TEACHER' ? '/teacher'
+            : user?.role === 'AGENT' ? '/scan'
+            : user?.role === 'EDUCATEUR' ? '/educator'
+            : '/dashboard'
+          } replace />
         ) : <Login />
       } />
 
@@ -69,23 +76,32 @@ function AppRoutes() {
         </ProtectedRoute>
       }>
         <Route path="/dashboard" element={<AdminDashboard />} />
-        <Route path="/students" element={<Students />} />
-        <Route path="/classes" element={<Classes />} />
         <Route path="/grades" element={<GradesManagement />} />
-        <Route path="/attendance" element={<AttendanceScanner />} />
         <Route path="/payments" element={<Payments />} />
         <Route path="/reports" element={<Reports />} />
-        <Route path="/teachers" element={<Teachers />} />
         <Route path="/bulletins" element={<Bulletins />} />
-        <Route path="/students/:id" element={<StudentDetail />} />
         <Route path="/users" element={<Users />} />
         <Route path="/subjects" element={<Subjects />} />
         <Route path="/logs" element={<ActivityLogs />} />
         <Route path="/expenses" element={<Expenses />} />
-        <Route path="/communications" element={<Communications />} />
         <Route path="/student-cards" element={<StudentCards />} />
         <Route path="/super-admin" element={<SuperAdmin />} />
         <Route path="/document-editor" element={<DocumentEditor />} />
+      </Route>
+
+      {/* Routes partagées Admin / Directeur / Éducateur */}
+      <Route element={
+        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'EDUCATEUR']}>
+          <AppLayout />
+        </ProtectedRoute>
+      }>
+        <Route path="/educator" element={<EducatorDashboard />} />
+        <Route path="/classes" element={<Classes />} />
+        <Route path="/teachers" element={<Teachers />} />
+        <Route path="/students" element={<Students />} />
+        <Route path="/students/:id" element={<StudentDetail />} />
+        <Route path="/attendance" element={<AttendanceScanner />} />
+        <Route path="/communications" element={<Communications />} />
       </Route>
 
       {/* Teacher routes */}

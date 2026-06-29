@@ -2,16 +2,28 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from apps.users.permissions import IsAdmin, IsAdminOrReadOnly, IsAdminOrTeacher
+from apps.users.permissions import IsAdmin, IsAdminOrReadOnly, IsAdminOrTeacher, IsClasseStaff
 from .models import Teacher, LessonLog
 from .serializers import TeacherSerializer, LessonLogSerializer
 
 
 class TeacherViewSet(viewsets.ModelViewSet):
-    queryset = Teacher.objects.select_related('user').all()
+    queryset = Teacher.objects.select_related('user').prefetch_related('classes', 'subjects').all()
     serializer_class = TeacherSerializer
     permission_classes = [IsAdminOrReadOnly]
     search_fields = ['user__first_name', 'user__last_name', 'speciality']
+
+    @action(detail=True, methods=['post'], permission_classes=[IsClasseStaff])
+    def assign_classes(self, request, pk=None):
+        """Affecte des classes à un professeur (directeur, admin ou éducateur)."""
+        teacher = self.get_object()
+        from apps.classes.models import Classe
+        ids = request.data.get('class_ids', [])
+        teacher.classes.set(Classe.objects.filter(id__in=ids))
+        from apps.users.models import log_activity
+        log_activity(request.user, 'USER_EDIT',
+                     f"Classes affectées à {teacher.full_name} ({len(ids)})", request)
+        return Response(TeacherSerializer(teacher).data)
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def me(self, request):

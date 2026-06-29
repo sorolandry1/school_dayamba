@@ -107,7 +107,10 @@ function Register() {
       localStorage.setItem('access_token', access);
       localStorage.setItem('refresh_token', refresh);
       localStorage.setItem('user', JSON.stringify(user));
-      const dest = user.role === 'TEACHER' ? '/teacher' : user.role === 'AGENT' ? '/scan' : '/dashboard';
+      const dest = user.role === 'TEACHER' ? '/teacher'
+        : user.role === 'AGENT' ? '/scan'
+        : user.role === 'EDUCATEUR' ? '/educator'
+        : '/dashboard';
       window.location.href = dest;
     } catch (err) {
       const data = err.response?.data;
@@ -251,14 +254,7 @@ function Register() {
                             fontSize: '0.85rem', cursor: 'pointer', padding: '3px 4px', borderRadius: 6,
                             background: checked ? '#10b98115' : 'transparent' }}>
                             <input type="checkbox" checked={checked} onChange={() => toggleSubject(s.id)} />
-                            <span>
-                              {s.name}
-                              {s.taken_by && !checked && (
-                                <span style={{ fontSize: '0.7rem', color: '#f59e0b', display: 'block' }}>
-                                  actuel : {s.taken_by}
-                                </span>
-                              )}
-                            </span>
+                            <span>{s.name}</span>
                           </label>
                         );
                       })}

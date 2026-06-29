@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.db.models import Count, Q
-from apps.users.permissions import IsAdminOrReadOnly
+from apps.users.permissions import IsAttendanceStaff
 from apps.students.models import Student
 from utils.sms_service import send_sms
 from utils.email_service import send_email
@@ -20,7 +20,7 @@ logger = logging.getLogger('apps')
 class AttendanceViewSet(viewsets.ModelViewSet):
     queryset = Attendance.objects.select_related('student', 'student__classe', 'scanned_by').all()
     serializer_class = AttendanceSerializer
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAttendanceStaff]
     filterset_fields = ['student', 'date', 'status', 'student__classe']
     ordering_fields = ['date', 'check_in']
 

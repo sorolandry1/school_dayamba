@@ -24,12 +24,24 @@ class TeacherSerializer(serializers.ModelSerializer):
     last_name = serializers.CharField(source='user.last_name', read_only=True)
     email = serializers.CharField(source='user.email', read_only=True)
     subjects = serializers.SerializerMethodField()
+    assigned_classes = serializers.SerializerMethodField()
+    assigned_class_ids = serializers.SerializerMethodField()
 
     class Meta:
         model = Teacher
         fields = ['id', 'user', 'username', 'first_name', 'last_name',
-                  'email', 'full_name', 'phone', 'speciality', 'hire_date', 'subjects']
+                  'email', 'full_name', 'phone', 'speciality', 'hire_date',
+                  'subjects', 'assigned_classes', 'assigned_class_ids']
 
     def get_subjects(self, obj):
         from apps.subjects.serializers import SubjectSerializer
         return SubjectSerializer(obj.subjects.all(), many=True).data
+
+    def get_assigned_classes(self, obj):
+        return [
+            {'id': c.id, 'name': c.name, 'level_name': c.level.name if c.level else None}
+            for c in obj.classes.select_related('level').all()
+        ]
+
+    def get_assigned_class_ids(self, obj):
+        return list(obj.classes.values_list('id', flat=True))

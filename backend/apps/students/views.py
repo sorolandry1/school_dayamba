@@ -265,6 +265,7 @@ class StudentViewSet(viewsets.ModelViewSet):
 
         created_count = 0
         skipped_count = 0
+        classes_created_count = 0
         errors = []
 
         # Places restantes avant d'atteindre la capacité maximale de l'école
@@ -303,16 +304,20 @@ class StudentViewSet(viewsets.ModelViewSet):
                 })
                 continue
 
-            # Classe lookup
+            # Classe lookup — création automatique si elle n'existe pas
             classe_name = row.get('classe', '').strip()
             classe = classes_map.get(classe_name.lower())
             if not classe:
-                errors.append({
-                    'row': row_num,
-                    'message': f'Classe introuvable: "{classe_name}". Vérifiez le nom exact.',
-                    'data': dict(list(row.items())[:4]),
-                })
-                continue
+                from apps.classes.views import _current_or_new_year, _get_or_create_level, _infer_level_name
+                level = _get_or_create_level(_infer_level_name(classe_name))
+                year = _current_or_new_year()
+                classe, was_created = Classe.objects.get_or_create(
+                    name=classe_name, academic_year=year,
+                    defaults={'level': level, 'capacity': 50},
+                )
+                classes_map[classe_name.lower()] = classe
+                if was_created:
+                    classes_created_count += 1
 
             # date_of_birth validation
             dob = row.get('date_naissance') or None
@@ -377,6 +382,7 @@ class StudentViewSet(viewsets.ModelViewSet):
         return Response({
             'created': created_count,
             'skipped': skipped_count,
+            'classes_created': classes_created_count,
             'errors':  errors,
             'total':   created_count + skipped_count + len(errors),
         })

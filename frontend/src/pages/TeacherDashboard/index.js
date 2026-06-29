@@ -20,16 +20,19 @@ function TeacherDashboard() {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [recentLogs, setRecentLogs] = useState([]);
+  const [myClasses, setMyClasses] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       api.get('/teachers/dashboard_stats/'),
       api.get('/teachers/lesson-logs/?ordering=-date').catch(() => ({ data: [] })),
-    ]).then(([statsRes, logsRes]) => {
+      api.get('/teachers/me/').catch(() => ({ data: {} })),
+    ]).then(([statsRes, logsRes, meRes]) => {
       setStats(statsRes.data);
       const logs = logsRes.data.results || logsRes.data;
       setRecentLogs(logs.slice(0, 5));
+      setMyClasses(meRes.data?.assigned_classes || []);
     }).catch(console.error)
       .finally(() => setLoading(false));
   }, []);
@@ -49,6 +52,22 @@ function TeacherDashboard() {
           <FiEdit3 size={15} /> Nouveau cours
         </button>
       </div>
+
+      {/* Mes classes affectées */}
+      {myClasses.length > 0 && (
+        <div className="card" style={{ marginBottom: 24 }}>
+          <div className="card-header">
+            <h3><FiUsers size={15} style={{ marginRight: 8 }} />Mes classes</h3>
+          </div>
+          <div className="card-body" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {myClasses.map(c => (
+              <span key={c.id} className="badge badge-info" style={{ fontSize: '0.85rem' }}>
+                {c.name}{c.level_name ? ` · ${c.level_name}` : ''}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="stats-grid" style={{ marginBottom: 24 }}>

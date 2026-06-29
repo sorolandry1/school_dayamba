@@ -8,6 +8,9 @@ function GradesManagement() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const isTeacher = user?.role === 'TEACHER';
+  // Seuls les professeurs (et l'admin technique) saisissent/modifient les notes.
+  // Le directeur consulte en lecture seule.
+  const canEdit = user?.role === 'TEACHER' || user?.role === 'ADMIN';
 
   // Filters
   const [subjects, setSubjects] = useState([]);
@@ -178,14 +181,18 @@ function GradesManagement() {
                             }}>
                               <span style={{ fontWeight: 600 }}>{g.value}/{g.max_value}</span>
                               <span style={{ color: '#98a2b3', fontSize: '0.7rem' }}>{g.type_evaluation}</span>
-                              <button onClick={() => handleEditGrade(g)}
-                                style={{ background: 'none', border: 'none', color: '#3b5beb', padding: 2 }}>
-                                <FiEdit2 size={12} />
-                              </button>
-                              <button onClick={() => handleDeleteGrade(g.id)}
-                                style={{ background: 'none', border: 'none', color: '#ef4444', padding: 2 }}>
-                                <FiTrash2 size={12} />
-                              </button>
+                              {canEdit && (
+                                <>
+                                  <button onClick={() => handleEditGrade(g)}
+                                    style={{ background: 'none', border: 'none', color: '#3b5beb', padding: 2 }}>
+                                    <FiEdit2 size={12} />
+                                  </button>
+                                  <button onClick={() => handleDeleteGrade(g.id)}
+                                    style={{ background: 'none', border: 'none', color: '#ef4444', padding: 2 }}>
+                                    <FiTrash2 size={12} />
+                                  </button>
+                                </>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -199,9 +206,13 @@ function GradesManagement() {
                         </span>
                       </td>
                       <td>
-                        <button className="btn btn-sm btn-primary" onClick={() => handleAddGrade(s.id)}>
-                          <FiPlus size={14} /> Note
-                        </button>
+                        {canEdit ? (
+                          <button className="btn btn-sm btn-primary" onClick={() => handleAddGrade(s.id)}>
+                            <FiPlus size={14} /> Note
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: '0.78rem', color: '#98a2b3', fontStyle: 'italic' }}>Lecture seule</span>
+                        )}
                       </td>
                     </tr>
                   );

@@ -187,9 +187,23 @@ function Sidebar({ isOpen, onClose }) {
     { to: '/attendance', icon: <FiUserCheck />, label: t('sidebar.links.attendance_today') },
   ];
 
+  // --- ÉDUCATEUR ---
+  const educatorLinks = [
+    { section: t('sidebar.sections.mon_espace') },
+    { to: '/educator', icon: <FiHome />, label: t('sidebar.links.dashboard') },
+    { section: t('sidebar.sections.presences') },
+    { to: '/attendance', icon: <FiCamera />, label: t('sidebar.links.attendance') },
+    { section: t('sidebar.sections.suivi', { defaultValue: 'Suivi & relations' }) },
+    { to: '/students', icon: <FiUsers />, label: t('sidebar.links.students') },
+    { to: '/classes', icon: <FiGrid />, label: t('sidebar.links.classes') },
+    { to: '/teachers', icon: <FiBook />, label: t('sidebar.links.teachers') },
+    { to: '/communications', icon: <FiMessageSquare />, label: t('sidebar.links.communications') },
+  ];
+
   let links = directorLinks;
   if (user?.role === 'TEACHER') links = teacherLinks;
   else if (user?.role === 'AGENT') links = agentLinks;
+  else if (user?.role === 'EDUCATEUR') links = educatorLinks;
 
   const initials = user
     ? `${(user.first_name || '')[0] || ''}${(user.last_name || '')[0] || ''}`.toUpperCase()

@@ -11,6 +11,10 @@ class Teacher(models.Model):
     phone = models.CharField(max_length=20, blank=True, default='')
     speciality = models.CharField(max_length=100, blank=True, default='')
     hire_date = models.DateField(null=True, blank=True)
+    # Classes attribuées au professeur par le directeur ou l'éducateur
+    classes = models.ManyToManyField(
+        'classes.Classe', related_name='teachers', blank=True
+    )
 
     class Meta:
         db_table = 'teachers'

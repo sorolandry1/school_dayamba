@@ -10,6 +10,7 @@ class User(AbstractUser):
         DIRECTOR = 'DIRECTOR', 'Directeur'
         TEACHER = 'TEACHER', 'Professeur'
         AGENT = 'AGENT', 'Agent d\'accueil'
+        EDUCATEUR = 'EDUCATEUR', 'Éducateur'
 
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.TEACHER)
     phone = models.CharField(max_length=20, blank=True, default='')
@@ -65,6 +66,7 @@ class Invitation(models.Model):
     ROLE_CHOICES = [
         ('TEACHER', 'Professeur'),
         ('AGENT', "Agent d'accueil"),
+        ('EDUCATEUR', 'Éducateur'),
     ]
 
     token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
