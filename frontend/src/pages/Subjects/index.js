@@ -55,7 +55,9 @@ function Subjects() {
       const payload = {
         name: form.name,
         coefficient: form.coefficient,
-        classe: form.classe,
+        // Conserve la classe d'une matière déjà rattachée (édition) ;
+        // null pour une nouvelle matière (matière générale, sans classe)
+        classe: form.classe || null,
         teacher: form.teacher || null,
       };
       if (modal === 'create') {
@@ -85,7 +87,7 @@ function Subjects() {
   // Group by classe for display
   const byClasse = {};
   subjects.forEach(s => {
-    const key = s.classe_name || s.classe;
+    const key = s.classe_name || 'Matières générales';
     if (!byClasse[key]) byClasse[key] = [];
     byClasse[key].push(s);
   });
@@ -201,24 +203,12 @@ function Subjects() {
                     onChange={e => setForm({ ...form, name: e.target.value })}
                     placeholder="Ex: Mathématiques" />
                 </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Classe *</label>
-                    <select className="form-control" required value={form.classe}
-                      onChange={e => setForm({ ...form, classe: e.target.value })}>
-                      <option value="">Sélectionner...</option>
-                      {classes.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>Coefficient *</label>
-                    <input type="number" className="form-control" required
-                      min="0.5" max="10" step="0.5"
-                      value={form.coefficient}
-                      onChange={e => setForm({ ...form, coefficient: e.target.value })} />
-                  </div>
+                <div className="form-group">
+                  <label>Coefficient *</label>
+                  <input type="number" className="form-control" required
+                    min="0.5" max="10" step="0.5"
+                    value={form.coefficient}
+                    onChange={e => setForm({ ...form, coefficient: e.target.value })} />
                 </div>
                 <div className="form-group">
                   <label>Professeur assigné</label>

@@ -234,6 +234,34 @@ school_dayamba/
 - `LoginRateThrottle` : max 10 tentatives/minute par IP
 - RBAC : `DIRECTOR` · `ADMIN` · `TEACHER` · `AGENT`
 - Journal d'activité : toutes les actions sensibles sont loguées (`ActivityLog`)
+- **Création d'utilisateur enrichie** : à la création d'un professeur, le directeur peut lui affecter directement une ou plusieurs matières (le profil `Teacher` est créé automatiquement)
+
+#### Liens d'inscription (auto-enregistrement)
+
+Le directeur génère un **lien d'invitation** (modèle `Invitation`) pour un professeur ou un agent, qui crée lui-même son compte :
+
+- `POST /auth/invitations/` — génère un lien (rôle, repère, expiration facultative) · admin/directeur
+- `GET /auth/invitations/` · `DELETE /auth/invitations/{id}/` — liste / révocation
+- `GET /auth/register/<token>/` — **public** : valide le lien (renvoie le rôle ; pour un professeur, la liste des matières disponibles)
+- `POST /auth/register/<token>/` — **public** : crée le compte (champs obligatoires, mot de passe robuste) et connecte automatiquement
+
+Le lien est à **usage unique**, peut **expirer**, et un professeur peut **choisir ses matières** au moment de s'inscrire.
+
+#### Réinitialisation de mot de passe (« mot de passe oublié »)
+
+- `POST /auth/password-reset/request/` — **public** : envoie un lien par email (réponse générique anti-énumération)
+- `GET /auth/password-reset/<token>/` — **public** : valide le jeton
+- `POST /auth/password-reset/<token>/` — **public** : applique le nouveau mot de passe
+
+Jeton à usage unique, **valable 1 heure**, anciens jetons invalidés à chaque nouvelle demande. Mot de passe robuste exigé. Lien construit avec `FRONTEND_URL`.
+
+**Politique de mot de passe robuste** (inscription + réinitialisation) : ≥ 8 caractères, au moins une majuscule, une minuscule, un chiffre et un symbole.
+
+### Matières (`apps/subjects`)
+
+- Coefficient + affectation à un professeur (`teacher`)
+- **Matière rattachée à une classe** *ou* **matière générale** (sans classe — `classe` optionnel)
+- **Anti-doublon** : impossible de créer deux fois la même matière (même nom + même classe, ou même nom au niveau général), insensible à la casse et aux espaces
 
 ### Élèves (`apps/students`)
 
@@ -324,6 +352,15 @@ Templates Email disponibles : `results`, `absence`, `payment_reminder`, `meeting
 | Page | Route | Description |
 |---|---|---|
 | Scanner | `/attendance` | Scanner QR code entrée/sortie |
+
+### Pages publiques (sans connexion)
+
+| Page | Route | Description |
+|---|---|---|
+| Connexion | `/login` | Authentification + lien « Mot de passe oublié ? » |
+| Inscription | `/register/:token` | Création de compte via lien d'invitation (prof/agent) |
+| Mot de passe oublié | `/forgot-password` | Demande d'un lien de réinitialisation par email |
+| Réinitialisation | `/reset-password/:token` | Définition d'un nouveau mot de passe |
 
 ---
 
@@ -467,6 +504,9 @@ DEFAULT_FROM_EMAIL=SchoolPro <noreply@schoolpro.local>
 
 # Nom de l'établissement (apparaît dans les emails)
 SCHOOL_NAME=Mon École
+
+# URL du frontend — sert à construire les liens envoyés par email (réinitialisation)
+FRONTEND_URL=http://localhost:3000
 
 # Capacité maximale d'élèves actifs par école (défaut : 7000)
 MAX_STUDENTS_PER_SCHOOL=7000

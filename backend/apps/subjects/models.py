@@ -9,7 +9,8 @@ class Subject(models.Model):
         null=True, blank=True, related_name='subjects'
     )
     classe = models.ForeignKey(
-        'classes.Classe', on_delete=models.CASCADE, related_name='subjects'
+        'classes.Classe', on_delete=models.CASCADE, related_name='subjects',
+        null=True, blank=True,
     )
 
     class Meta:
@@ -18,4 +19,4 @@ class Subject(models.Model):
         unique_together = ['name', 'classe']
 
     def __str__(self):
-        return f"{self.name} - {self.classe.name}"
+        return f"{self.name} - {self.classe.name}" if self.classe else self.name

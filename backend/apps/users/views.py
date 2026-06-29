@@ -1,11 +1,15 @@
 from rest_framework import viewsets, status, generics
+from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, get_user_model
-from .serializers import UserSerializer, UserCreateSerializer, ChangePasswordSerializer, LoginSerializer
+from .serializers import (
+    UserSerializer, UserCreateSerializer, ChangePasswordSerializer, LoginSerializer,
+    InvitationSerializer, RegistrationSerializer,
+)
 from .permissions import IsAdmin
 import logging
 
@@ -149,6 +153,199 @@ class UserViewSet(viewsets.ModelViewSet):
         from apps.users.models import log_activity
         log_activity(request.user, 'PASSWORD_RESET', f"Mot de passe réinitialisé pour {user.get_full_name()}", request)
         return Response({'message': 'Mot de passe reinitialise.'})
+
+
+class InvitationViewSet(viewsets.ModelViewSet):
+    """Gestion des liens d'inscription par le directeur/admin."""
+    permission_classes = [IsAdmin]
+    serializer_class = InvitationSerializer
+    http_method_names = ['get', 'post', 'delete']  # pas de modification d'un lien émis
+
+    def get_queryset(self):
+        from .models import Invitation
+        return Invitation.objects.select_related('created_by', 'used_by').all()
+
+    def perform_create(self, serializer):
+        invitation = serializer.save(created_by=self.request.user)
+        from apps.users.models import log_activity
+        log_activity(
+            self.request.user, 'USER_ADD',
+            f"Lien d'inscription généré ({invitation.get_role_display()})",
+            self.request,
+        )
+
+
+class PublicInvitationView(APIView):
+    """Endpoint public : valider un lien (GET) et créer un compte (POST)."""
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'register'
+
+    def _get_invitation(self, token):
+        from .models import Invitation
+        try:
+            return Invitation.objects.get(token=token)
+        except (Invitation.DoesNotExist, ValueError, Exception):
+            return None
+
+    def get(self, request, token):
+        inv = self._get_invitation(token)
+        if not inv:
+            return Response({'valid': False, 'reason': 'Lien invalide.'}, status=404)
+        if inv.is_used:
+            return Response({'valid': False, 'reason': 'Ce lien a déjà été utilisé.'})
+        if inv.is_expired:
+            return Response({'valid': False, 'reason': 'Ce lien a expiré.'})
+
+        data = {
+            'valid': True,
+            'role': inv.role,
+            'role_display': inv.get_role_display(),
+            'note': inv.note,
+        }
+        # Pour un professeur : liste des matières qu'il pourra cocher
+        if inv.role == 'TEACHER':
+            from apps.subjects.models import Subject
+            subjects = Subject.objects.select_related('classe').order_by('classe__name', 'name')
+            data['subjects'] = [
+                {
+                    'id': s.id,
+                    'name': s.name,
+                    'classe_name': s.classe.name if s.classe else None,
+                    'taken_by': s.teacher.full_name if s.teacher else None,
+                }
+                for s in subjects
+            ]
+        return Response(data)
+
+    def post(self, request, token):
+        inv = self._get_invitation(token)
+        if not inv:
+            return Response({'error': 'Lien invalide.'}, status=404)
+        if not inv.is_valid:
+            reason = 'Ce lien a déjà été utilisé.' if inv.is_used else 'Ce lien a expiré.'
+            return Response({'error': reason}, status=400)
+
+        serializer = RegistrationSerializer(data=request.data, context={'invitation': inv})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        from apps.users.models import log_activity
+        log_activity(user, 'USER_ADD',
+                     f"Compte créé via lien d'inscription — {user.get_role_display()}", request)
+
+        # Connexion automatique
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': UserSerializer(user).data,
+        }, status=status.HTTP_201_CREATED)
+
+
+class PasswordResetRequestView(APIView):
+    """Demande de réinitialisation : envoie un lien par email (public)."""
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'register'
+
+    def post(self, request):
+        from datetime import timedelta
+        from django.conf import settings
+        from django.utils import timezone
+        from .models import PasswordResetToken
+        from utils.email_service import send_email
+
+        identifier = (request.data.get('identifier') or '').strip()
+        # Réponse générique : on ne révèle jamais si le compte existe
+        generic = Response({
+            'message': "Si un compte correspond, un email de réinitialisation a été envoyé."
+        })
+        if not identifier:
+            return generic
+
+        user = (
+            User.objects.filter(email__iexact=identifier).first()
+            or User.objects.filter(username__iexact=identifier).first()
+        )
+        if not user or not user.is_active or not user.email:
+            logger.info("Reset mot de passe demandé pour identifiant inconnu/sans email: %s", identifier)
+            return generic
+
+        # Invalide les anciens jetons non utilisés
+        PasswordResetToken.objects.filter(user=user, used_at__isnull=True).delete()
+        token = PasswordResetToken.objects.create(
+            user=user, expires_at=timezone.now() + timedelta(hours=1)
+        )
+        link = f"{settings.FRONTEND_URL}/reset-password/{token.token}"
+        send_email(
+            to=user.email,
+            template='custom',
+            subject="Réinitialisation de votre mot de passe",
+            body=(
+                f"Bonjour {user.first_name or user.username},\n\n"
+                f"Vous avez demandé à réinitialiser votre mot de passe.\n"
+                f"Cliquez sur le lien ci-dessous (valable 1 heure) :\n\n"
+                f"{link}\n\n"
+                f"Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.\n\n"
+                f"Cordialement,\n{getattr(settings, 'SCHOOL_NAME', 'SchoolPro')}"
+            ),
+        )
+        logger.info("Email de réinitialisation envoyé à %s", user.email)
+        return generic
+
+
+class PasswordResetConfirmView(APIView):
+    """Valide un jeton (GET) et applique le nouveau mot de passe (POST). Public."""
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'register'
+
+    def _get_token(self, token):
+        from .models import PasswordResetToken
+        try:
+            return PasswordResetToken.objects.select_related('user').get(token=token)
+        except (PasswordResetToken.DoesNotExist, ValueError, Exception):
+            return None
+
+    def get(self, request, token):
+        t = self._get_token(token)
+        if not t:
+            return Response({'valid': False, 'reason': 'Lien invalide.'}, status=404)
+        if not t.is_valid:
+            reason = 'Ce lien a déjà été utilisé.' if t.is_used else 'Ce lien a expiré.'
+            return Response({'valid': False, 'reason': reason})
+        return Response({'valid': True, 'username': t.user.username})
+
+    def post(self, request, token):
+        from django.utils import timezone
+        from .serializers import validate_strong_password
+
+        t = self._get_token(token)
+        if not t:
+            return Response({'error': 'Lien invalide.'}, status=404)
+        if not t.is_valid:
+            reason = 'Ce lien a déjà été utilisé.' if t.is_used else 'Ce lien a expiré.'
+            return Response({'error': reason}, status=400)
+
+        password = request.data.get('password') or ''
+        try:
+            validate_strong_password(password)
+        except Exception as exc:
+            from rest_framework.exceptions import ValidationError as DRFValidationError
+            detail = exc.detail if isinstance(exc, DRFValidationError) else str(exc)
+            return Response({'password': detail}, status=400)
+
+        user = t.user
+        user.set_password(password)
+        user.save(update_fields=['password'])
+        t.used_at = timezone.now()
+        t.save(update_fields=['used_at'])
+
+        from apps.users.models import log_activity
+        log_activity(user, 'PASSWORD_RESET',
+                     "Mot de passe réinitialisé via lien email", request)
+        return Response({'message': 'Mot de passe réinitialisé avec succès.'})
 
 
 class ActivityLogListView(generics.ListAPIView):

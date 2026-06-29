@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { FiLock, FiUser } from 'react-icons/fi';
@@ -89,6 +89,12 @@ function Login() {
           <button type="submit" className="btn btn-primary" disabled={loading}>
             {loading ? t('login.loading') : t('login.submit')}
           </button>
+
+          <div style={{ marginTop: 14, textAlign: 'center' }}>
+            <Link to="/forgot-password" style={{ fontSize: '0.85rem', color: '#3b5beb' }}>
+              Mot de passe oublié ?
+            </Link>
+          </div>
 
           <div style={{ marginTop: 24, textAlign: 'center', fontSize: '0.8rem', color: '#98a2b3' }}>
             Comptes de test : admin / admin123 — directeur / directeur123 — prof_math / prof123 — agent / agent123

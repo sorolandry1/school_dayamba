@@ -12,6 +12,8 @@ class DocumentTemplate(models.Model):
         ('modern', 'Moderne'),
         ('minimalist', 'Minimaliste'),
         ('premium', 'Premium'),
+        ('green', 'Nature'),
+        ('warm', 'Chaleureux'),
     ]
     SCHOOL_TYPES = [
         ('all',        'Tous les établissements'),

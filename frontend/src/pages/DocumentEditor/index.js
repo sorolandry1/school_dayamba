@@ -1264,6 +1264,19 @@ const SCHOOL_TYPE_OPTIONS = [
   { value: 'prive',      label: 'Privé' },
 ];
 
+// Extrait un message lisible d'une erreur axios / réponse DRF
+function errMessage(e, fallback) {
+  const data = e?.response?.data;
+  if (!data) return fallback;
+  if (typeof data === 'string') return data;
+  if (data.detail) return data.detail;
+  // DRF renvoie { champ: ["message", ...] }
+  const parts = Object.entries(data).map(([field, msgs]) =>
+    `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`
+  );
+  return parts.length ? parts.join(' · ') : fallback;
+}
+
 export default function DocumentEditor() {
   const navigate = useNavigate();
   const [docType, setDocType] = useState('bulletin');
@@ -1369,7 +1382,7 @@ export default function DocumentEditor() {
         toast.success('Modèle créé !');
       }
       setIsDirty(false);
-    } catch { toast.error('Erreur lors de la sauvegarde.'); }
+    } catch (e) { toast.error(errMessage(e, 'Erreur lors de la sauvegarde.')); }
     finally { setSaving(false); }
   };
 
@@ -1379,7 +1392,7 @@ export default function DocumentEditor() {
       await api.put(`/reports/templates/${selectedId}/`, { is_default: true });
       setTemplates(prev => prev.map(t => ({ ...t, is_default: t.id === selectedId })));
       toast.success('Modèle défini par défaut !');
-    } catch { toast.error('Erreur.'); }
+    } catch (e) { toast.error(errMessage(e, 'Erreur.')); }
   };
 
   const deleteTemplate = async () => {
@@ -1392,7 +1405,7 @@ export default function DocumentEditor() {
       setConfig(buildDefaultConfig(docType));
       setTemplateName('');
       toast.success('Modèle supprimé.');
-    } catch { toast.error('Erreur.'); }
+    } catch (e) { toast.error(errMessage(e, 'Erreur.')); }
   };
 
   // ── Token insertion via focused field ──

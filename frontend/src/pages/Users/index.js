@@ -3,7 +3,7 @@ import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import {
   FiPlus, FiSearch, FiEdit2, FiToggleLeft, FiToggleRight,
-  FiKey, FiX, FiUser, FiShield
+  FiKey, FiX, FiUser, FiShield, FiBook, FiLink, FiCopy, FiTrash2, FiCheck
 } from 'react-icons/fi';
 
 const ROLE_LABELS = {
@@ -22,7 +22,7 @@ const ROLE_COLORS = {
 
 const emptyForm = {
   username: '', email: '', first_name: '', last_name: '',
-  role: 'TEACHER', phone: '', password: '',
+  role: 'TEACHER', phone: '', password: '', subject_ids: [],
 };
 
 function Users() {
@@ -37,6 +37,56 @@ function Users() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState(null);
   const [newPassword, setNewPassword] = useState('');
+  const [subjects, setSubjects] = useState([]);
+  // Liens d'inscription
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [invitations, setInvitations] = useState([]);
+  const [inviteForm, setInviteForm] = useState({ role: 'TEACHER', note: '', expires_in_days: '' });
+  const [creatingInvite, setCreatingInvite] = useState(false);
+  const [copiedToken, setCopiedToken] = useState(null);
+
+  const inviteLink = (token) => `${window.location.origin}/register/${token}`;
+
+  const fetchInvitations = async () => {
+    try {
+      const res = await api.get('/auth/invitations/');
+      setInvitations(res.data.results || res.data);
+    } catch (e) { console.error(e); }
+  };
+
+  const openInviteModal = () => { setShowInviteModal(true); fetchInvitations(); };
+
+  const createInvitation = async (e) => {
+    e.preventDefault();
+    setCreatingInvite(true);
+    try {
+      const payload = { role: inviteForm.role, note: inviteForm.note };
+      if (inviteForm.expires_in_days) payload.expires_in_days = Number(inviteForm.expires_in_days);
+      await api.post('/auth/invitations/', payload);
+      setInviteForm({ role: inviteForm.role, note: '', expires_in_days: '' });
+      fetchInvitations();
+    } catch (err) {
+      alert('Erreur: ' + JSON.stringify(err.response?.data));
+    } finally { setCreatingInvite(false); }
+  };
+
+  const revokeInvitation = async (id) => {
+    if (!window.confirm('Supprimer ce lien d\'inscription ? Il ne sera plus utilisable.')) return;
+    try {
+      await api.delete(`/auth/invitations/${id}/`);
+      fetchInvitations();
+    } catch { alert('Suppression impossible.'); }
+  };
+
+  const copyLink = async (token) => {
+    try {
+      await navigator.clipboard.writeText(inviteLink(token));
+      setCopiedToken(token);
+      setTimeout(() => setCopiedToken(null), 2000);
+    } catch {
+      window.prompt('Copiez le lien :', inviteLink(token));
+    }
+  };
 
   // Directeur ne peut pas toucher les comptes Admin
   const canActOn = (targetUser) => {
@@ -62,6 +112,32 @@ function Users() {
   }, [search, filterRole]);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+  // Charge toutes les matières (pour l'affectation aux professeurs)
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.get('/subjects/', { params: { page_size: 500 } });
+        setSubjects(res.data.results || res.data);
+      } catch (e) { console.error(e); }
+    })();
+  }, []);
+
+  // Matières groupées par classe pour l'affichage du sélecteur
+  const subjectsByClasse = subjects.reduce((acc, s) => {
+    const key = s.classe_name || 'Sans classe';
+    (acc[key] = acc[key] || []).push(s);
+    return acc;
+  }, {});
+
+  const toggleSubject = (id) => {
+    setForm(f => ({
+      ...f,
+      subject_ids: f.subject_ids.includes(id)
+        ? f.subject_ids.filter(x => x !== id)
+        : [...f.subject_ids, id],
+    }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -89,6 +165,7 @@ function Users() {
       role: user.role,
       phone: user.phone || '',
       password: '',
+      subject_ids: user.assigned_subject_ids || [],
     });
     setShowModal(true);
   };
@@ -122,9 +199,14 @@ function Users() {
           <h2>Gestion des Utilisateurs</h2>
           <p>{users.length} compte(s) enregistré(s)</p>
         </div>
-        <button className="btn btn-primary" onClick={() => { setEditing(null); setForm(emptyForm); setShowModal(true); }}>
-          <FiPlus /> Nouvel utilisateur
-        </button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn btn-secondary" onClick={openInviteModal}>
+            <FiLink /> Liens d'inscription
+          </button>
+          <button className="btn btn-primary" onClick={() => { setEditing(null); setForm(emptyForm); setShowModal(true); }}>
+            <FiPlus /> Nouvel utilisateur
+          </button>
+        </div>
       </div>
 
       {/* Résumé par rôle */}
@@ -299,6 +381,70 @@ function Users() {
                       onChange={e => setForm({...form, password: e.target.value})} />
                   </div>
                 )}
+
+                {form.role === 'TEACHER' && (
+                  <div className="form-group">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <FiBook size={14} /> Matières enseignées
+                      {form.subject_ids.length > 0 && (
+                        <span style={{
+                          marginLeft: 'auto', fontSize: '0.75rem', fontWeight: 600,
+                          color: ROLE_COLORS.TEACHER,
+                        }}>
+                          {form.subject_ids.length} sélectionnée(s)
+                        </span>
+                      )}
+                    </label>
+                    {subjects.length === 0 ? (
+                      <p style={{ fontSize: '0.8rem', color: '#98a2b3', margin: 0 }}>
+                        Aucune matière disponible. Créez d'abord des matières et des classes.
+                      </p>
+                    ) : (
+                      <div style={{
+                        maxHeight: 220, overflowY: 'auto', border: '1px solid #e2e8f0',
+                        borderRadius: 8, padding: 8,
+                      }}>
+                        {Object.entries(subjectsByClasse).map(([classeName, list]) => (
+                          <div key={classeName} style={{ marginBottom: 8 }}>
+                            <div style={{
+                              fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase',
+                              color: '#98a2b3', margin: '4px 0',
+                            }}>
+                              {classeName}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                              {list.map(s => {
+                                const checked = form.subject_ids.includes(s.id);
+                                const takenByOther = s.teacher && !checked;
+                                return (
+                                  <label key={s.id} style={{
+                                    display: 'flex', alignItems: 'center', gap: 6,
+                                    fontSize: '0.85rem', cursor: 'pointer', padding: '3px 4px',
+                                    borderRadius: 6, background: checked ? ROLE_COLORS.TEACHER + '15' : 'transparent',
+                                  }}>
+                                    <input type="checkbox" checked={checked}
+                                      onChange={() => toggleSubject(s.id)} />
+                                    <span>
+                                      {s.name}
+                                      {takenByOther && (
+                                        <span style={{ fontSize: '0.7rem', color: '#f59e0b', display: 'block' }}>
+                                          actuel : {s.teacher_name}
+                                        </span>
+                                      )}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <small style={{ color: '#98a2b3' }}>
+                      Cochez les matières (par classe) que ce professeur enseignera.
+                    </small>
+                  </div>
+                )}
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Annuler</button>
@@ -334,6 +480,111 @@ function Users() {
                 <button type="submit" className="btn btn-primary"><FiKey size={14} /> Réinitialiser</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal liens d'inscription */}
+      {showInviteModal && (
+        <div className="modal-overlay" onClick={() => setShowInviteModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 640 }}>
+            <div className="modal-header">
+              <h3><FiLink style={{ marginRight: 8 }} />Liens d'inscription</h3>
+              <button className="btn-icon" onClick={() => setShowInviteModal(false)}><FiX /></button>
+            </div>
+            <div className="modal-body">
+              <p style={{ color: '#667085', marginTop: 0 }}>
+                Générez un lien à transmettre à un professeur ou un agent : il créera lui-même
+                son compte. Chaque lien est à usage unique.
+              </p>
+
+              {/* Formulaire de génération */}
+              <form onSubmit={createInvitation} style={{
+                display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap',
+                background: '#f8fafc', padding: 12, borderRadius: 10, marginBottom: 18,
+              }}>
+                <div className="form-group" style={{ margin: 0, minWidth: 140 }}>
+                  <label>Rôle</label>
+                  <select className="form-control" value={inviteForm.role}
+                    onChange={e => setInviteForm({ ...inviteForm, role: e.target.value })}>
+                    <option value="TEACHER">Professeur</option>
+                    <option value="AGENT">Agent d'accueil</option>
+                  </select>
+                </div>
+                <div className="form-group" style={{ margin: 0, flex: 1, minWidth: 160 }}>
+                  <label>Repère (facultatif)</label>
+                  <input className="form-control" placeholder="Ex : M. Diallo"
+                    value={inviteForm.note}
+                    onChange={e => setInviteForm({ ...inviteForm, note: e.target.value })} />
+                </div>
+                <div className="form-group" style={{ margin: 0, width: 120 }}>
+                  <label>Expire (jours)</label>
+                  <input type="number" min="1" max="365" className="form-control" placeholder="∞"
+                    value={inviteForm.expires_in_days}
+                    onChange={e => setInviteForm({ ...inviteForm, expires_in_days: e.target.value })} />
+                </div>
+                <button type="submit" className="btn btn-primary" disabled={creatingInvite}>
+                  <FiPlus size={14} /> {creatingInvite ? '...' : 'Générer'}
+                </button>
+              </form>
+
+              {/* Liste des liens */}
+              {invitations.length === 0 ? (
+                <p style={{ textAlign: 'center', color: '#98a2b3', padding: 20 }}>
+                  Aucun lien généré pour l'instant.
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {invitations.map(inv => {
+                    const status = inv.is_used ? { label: 'Utilisé', color: '#10b981' }
+                      : inv.is_expired ? { label: 'Expiré', color: '#ef4444' }
+                      : { label: 'Actif', color: '#3b5beb' };
+                    return (
+                      <div key={inv.id} style={{
+                        border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 12px',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{
+                            padding: '2px 10px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700,
+                            background: (ROLE_COLORS[inv.role] || '#667085') + '20',
+                            color: ROLE_COLORS[inv.role] || '#667085',
+                          }}>
+                            {inv.role_display}
+                          </span>
+                          {inv.note && <span style={{ fontSize: '0.85rem', color: '#344054' }}>{inv.note}</span>}
+                          <span style={{
+                            marginLeft: 'auto', fontSize: '0.72rem', fontWeight: 700,
+                            color: status.color,
+                          }}>
+                            ● {status.label}
+                            {inv.is_used && inv.used_by_name ? ` — ${inv.used_by_name}` : ''}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                          <input readOnly className="form-control" value={inviteLink(inv.token)}
+                            onFocus={e => e.target.select()}
+                            style={{ fontSize: '0.78rem', fontFamily: 'monospace', flex: 1,
+                              opacity: inv.is_valid ? 1 : 0.5 }} />
+                          {inv.is_valid && (
+                            <button type="button" className="btn btn-sm btn-secondary"
+                              title="Copier le lien" onClick={() => copyLink(inv.token)}>
+                              {copiedToken === inv.token ? <FiCheck size={14} /> : <FiCopy size={14} />}
+                            </button>
+                          )}
+                          <button type="button" className="btn btn-sm btn-danger"
+                            title="Supprimer le lien" onClick={() => revokeInvitation(inv.id)}>
+                            <FiTrash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setShowInviteModal(false)}>Fermer</button>
+            </div>
           </div>
         </div>
       )}

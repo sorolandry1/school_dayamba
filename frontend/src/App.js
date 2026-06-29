@@ -7,6 +7,9 @@ import './styles/global.css';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AppLayout from './components/layout/AppLayout';
 import Login from './pages/Login';
+import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import AdminDashboard from './pages/AdminDashboard';
 import Students from './pages/Students';
 import Classes from './pages/Classes';
@@ -51,6 +54,13 @@ function AppRoutes() {
           <Navigate to={user?.role === 'TEACHER' ? '/teacher' : user?.role === 'AGENT' ? '/scan' : '/dashboard'} replace />
         ) : <Login />
       } />
+
+      {/* Inscription publique via lien d'invitation */}
+      <Route path="/register/:token" element={<Register />} />
+
+      {/* Réinitialisation de mot de passe (public) */}
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password/:token" element={<ResetPassword />} />
 
       {/* Admin / Director routes */}
       <Route element={

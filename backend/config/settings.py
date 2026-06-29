@@ -200,7 +200,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'DEFAULT_PAGINATION_CLASS': 'config.pagination.StandardPagination',
     'PAGE_SIZE': 25,
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
@@ -217,6 +217,7 @@ REST_FRAMEWORK = {
         'user': '1000/hour',
         'login': '10/minute',     # Brute-force protection on login
         'burst': '30/minute',
+        'register': '30/hour',    # Inscription via lien d'invitation
     },
     # Consistent error responses
     'EXCEPTION_HANDLER': 'rest_framework.views.exception_handler',
@@ -271,6 +272,9 @@ EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'SchoolPro <noreply@schoolpro.local>')
 SCHOOL_NAME = os.environ.get('SCHOOL_NAME', 'SchoolPro')
+
+# URL du frontend (pour construire les liens envoyés par email, ex. réinitialisation)
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000').rstrip('/')
 
 # ─── Capacité de l'établissement ──────────────────────────────────────────────
 # Nombre maximal d'élèves actifs qu'une école peut contenir.
