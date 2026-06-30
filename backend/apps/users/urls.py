@@ -5,11 +5,13 @@ from .views import (
     LoginView, MeView, ChangePasswordView, UserViewSet, ActivityLogListView,
     InvitationViewSet, PublicInvitationView,
     PasswordResetRequestView, PasswordResetConfirmView, NotificationListView,
+    EcoleViewSet,
 )
 
 router = DefaultRouter()
 router.register('users', UserViewSet)
 router.register('invitations', InvitationViewSet, basename='invitation')
+router.register('ecoles', EcoleViewSet, basename='ecole')
 
 urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),

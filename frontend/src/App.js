@@ -37,6 +37,7 @@ import Analytics from './pages/Analytics';
 import AcademicYears from './pages/AcademicYears';
 import Timetable from './pages/Timetable';
 import Accounting from './pages/Accounting';
+import Schools from './pages/Schools';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, isAuthenticated } = useAuth();
@@ -92,6 +93,7 @@ function AppRoutes() {
         <Route path="/academic-years" element={<AcademicYears />} />
         <Route path="/student-cards" element={<StudentCards />} />
         <Route path="/super-admin" element={<SuperAdmin />} />
+        <Route path="/schools" element={<Schools />} />
         <Route path="/document-editor" element={<DocumentEditor />} />
       </Route>
 

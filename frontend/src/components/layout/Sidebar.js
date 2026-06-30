@@ -169,6 +169,7 @@ function Sidebar({ isOpen, onClose }) {
     { to: '/users', icon: <FiShield />, label: t('sidebar.links.users') },
     ...(modules.logs !== false ? [{ to: '/logs', icon: <FiActivity />, label: t('sidebar.links.logs') }] : []),
     ...(user?.role === 'ADMIN' ? [
+      { to: '/schools', icon: <FiHome />, label: t('sidebar.links.schools', { defaultValue: 'Établissements' }) },
       { to: '/super-admin', icon: <FiSettings />, label: t('sidebar.links.super_admin') },
       { to: '/document-editor', icon: <FiLayout />, label: 'Éditeur de documents' },
     ] : []),

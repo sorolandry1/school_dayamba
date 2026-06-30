@@ -84,6 +84,12 @@ class IsCashManager(BasePermission):
         return request.user.is_authenticated and request.user.role in ['ADMIN', 'DIRECTOR', 'CAISSE']
 
 
+class IsPlatformAdmin(BasePermission):
+    """Super-administrateur de la plateforme (gère toutes les écoles)."""
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role == 'ADMIN'
+
+
 class IsDirector(BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role == 'DIRECTOR'

@@ -4,9 +4,30 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from apps.subjects.models import Subject
 from apps.teachers.models import Teacher
-from .models import Invitation
+from .models import Invitation, Ecole
 
 User = get_user_model()
+
+
+class EcoleSerializer(serializers.ModelSerializer):
+    logo_url = serializers.SerializerMethodField()
+    user_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Ecole
+        fields = ['id', 'name', 'address', 'phone', 'email', 'logo', 'logo_url',
+                  'is_active', 'user_count', 'created_at']
+        read_only_fields = ['created_at']
+        extra_kwargs = {'logo': {'write_only': True, 'required': False}}
+
+    def get_logo_url(self, obj):
+        if obj.logo:
+            request = self.context.get('request')
+            return request.build_absolute_uri(obj.logo.url) if request else obj.logo.url
+        return None
+
+    def get_user_count(self, obj):
+        return obj.users.count()
 
 
 def sync_teacher_profile(user, subjects):
@@ -37,11 +58,13 @@ class UserSerializer(serializers.ModelSerializer):
         many=True, write_only=True, required=False, queryset=Subject.objects.all(),
     )
 
+    ecole_name = serializers.CharField(source='ecole.name', read_only=True)
+
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name',
                   'full_name', 'role', 'phone', 'is_active', 'date_joined',
-                  'assigned_subject_ids', 'subject_ids']
+                  'assigned_subject_ids', 'subject_ids', 'ecole', 'ecole_name']
         read_only_fields = ['id', 'date_joined']
 
     def get_full_name(self, obj):
@@ -70,11 +93,15 @@ class UserCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'first_name', 'last_name',
-                  'role', 'phone', 'password', 'subject_ids']
+                  'role', 'phone', 'password', 'subject_ids', 'ecole']
 
     def create(self, validated_data):
         password = validated_data.pop('password')
         subjects = validated_data.pop('subject_ids', None)
+        # Rattachement à l'école : celle fournie, sinon celle du créateur
+        request = self.context.get('request')
+        if not validated_data.get('ecole') and request and getattr(request.user, 'ecole_id', None):
+            validated_data['ecole'] = request.user.ecole
         user = User(**validated_data)
         user.set_password(password)
         user.save()

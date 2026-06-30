@@ -4,6 +4,25 @@ from django.db import models
 from django.utils import timezone
 
 
+class Ecole(models.Model):
+    """Établissement scolaire. Une seule plateforme peut en gérer plusieurs."""
+    name = models.CharField(max_length=200)
+    address = models.CharField(max_length=255, blank=True, default='')
+    phone = models.CharField(max_length=30, blank=True, default='')
+    email = models.CharField(max_length=200, blank=True, default='')
+    logo = models.ImageField(upload_to='ecoles/', blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'ecoles'
+        ordering = ['name']
+        verbose_name = 'École'
+
+    def __str__(self):
+        return self.name
+
+
 class User(AbstractUser):
     class Role(models.TextChoices):
         ADMIN = 'ADMIN', 'Administrateur'
@@ -16,6 +35,11 @@ class User(AbstractUser):
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.TEACHER)
     phone = models.CharField(max_length=20, blank=True, default='')
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
+    # École de rattachement (null = super-admin plateforme / non rattaché)
+    ecole = models.ForeignKey(
+        'users.Ecole', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='users'
+    )
 
     class Meta:
         db_table = 'users'

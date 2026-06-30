@@ -8,9 +8,10 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, get_user_model
 from .serializers import (
     UserSerializer, UserCreateSerializer, ChangePasswordSerializer, LoginSerializer,
-    InvitationSerializer, RegistrationSerializer,
+    InvitationSerializer, RegistrationSerializer, EcoleSerializer,
 )
-from .permissions import IsAdmin
+from .permissions import IsAdmin, IsPlatformAdmin
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 import logging
 
 
@@ -347,6 +348,17 @@ class PasswordResetConfirmView(APIView):
         log_activity(user, 'PASSWORD_RESET',
                      "Mot de passe réinitialisé via lien email", request)
         return Response({'message': 'Mot de passe réinitialisé avec succès.'})
+
+
+class EcoleViewSet(viewsets.ModelViewSet):
+    """Gestion des établissements (super-administrateur plateforme)."""
+    permission_classes = [IsPlatformAdmin]
+    serializer_class = EcoleSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_queryset(self):
+        from .models import Ecole
+        return Ecole.objects.all()
 
 
 class NotificationListView(APIView):
