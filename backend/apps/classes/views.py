@@ -3,11 +3,19 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from apps.users.permissions import IsAdmin, IsClasseStaff
-from .models import AcademicYear, Level, Classe
+from .models import AcademicYear, Level, Classe, ScheduleEntry
 from .serializers import (
     AcademicYearSerializer, LevelSerializer,
-    ClasseSerializer, ClasseDetailSerializer
+    ClasseSerializer, ClasseDetailSerializer, ScheduleEntrySerializer
 )
+
+
+class ScheduleEntryViewSet(viewsets.ModelViewSet):
+    """Emploi du temps : créneaux par classe (matière, salle, jour, horaires)."""
+    queryset = ScheduleEntry.objects.select_related('classe', 'subject', 'subject__teacher', 'subject__teacher__user').all()
+    serializer_class = ScheduleEntrySerializer
+    permission_classes = [IsClasseStaff]
+    filterset_fields = ['classe', 'day']
 
 # Ordre d'affichage des niveaux courants (noms tels qu'utilisés par le frontend)
 _LEVEL_ORDER = {

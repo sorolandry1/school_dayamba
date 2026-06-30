@@ -10,7 +10,7 @@ import {
   FiBarChart2, FiCamera, FiLogOut, FiGrid,
   FiFileText, FiShield, FiUserCheck, FiActivity, FiUser,
   FiMessageSquare, FiEdit3, FiGlobe, FiCreditCard, FiSettings, FiLayout,
-  FiKey, FiX, FiEye, FiEyeOff,
+  FiKey, FiX, FiEye, FiEyeOff, FiClock, FiBriefcase,
 } from 'react-icons/fi';
 
 function getModules() {
@@ -155,6 +155,7 @@ function Sidebar({ isOpen, onClose }) {
     ...(modules.bulletins !== false ? [{ to: '/bulletins', icon: <FiFileText />, label: t('sidebar.links.bulletins') }] : []),
     ...(modules.grades !== false ? [{ to: '/grades', icon: <FiClipboard />, label: t('sidebar.links.grades') }] : []),
     ...(modules.attendance !== false ? [{ to: '/attendance', icon: <FiCamera />, label: t('sidebar.links.attendance') }] : []),
+    { to: '/timetable', icon: <FiClock />, label: t('sidebar.links.timetable', { defaultValue: 'Emploi du temps' }) },
 
     { section: t('sidebar.sections.administration') },
     ...(modules.payments !== false ? [{ to: '/payments', icon: <FiDollarSign />, label: t('sidebar.links.payments') }] : []),
@@ -164,6 +165,7 @@ function Sidebar({ isOpen, onClose }) {
     ...(modules.communications !== false ? [{ to: '/communications', icon: <FiMessageSquare />, label: t('sidebar.links.communications') }] : []),
     ...(modules.subjects !== false ? [{ to: '/subjects', icon: <FiBook />, label: t('sidebar.links.subjects') }] : []),
     ...(modules.expenses !== false ? [{ to: '/expenses', icon: <FiDollarSign />, label: t('sidebar.links.expenses') }] : []),
+    { to: '/accounting', icon: <FiBriefcase />, label: t('sidebar.links.accounting', { defaultValue: 'Comptabilité' }) },
     { to: '/users', icon: <FiShield />, label: t('sidebar.links.users') },
     ...(modules.logs !== false ? [{ to: '/logs', icon: <FiActivity />, label: t('sidebar.links.logs') }] : []),
     ...(user?.role === 'ADMIN' ? [
@@ -210,6 +212,7 @@ function Sidebar({ isOpen, onClose }) {
     { section: t('sidebar.sections.administration') },
     { to: '/payments', icon: <FiDollarSign />, label: t('sidebar.links.payments') },
     { to: '/expenses', icon: <FiDollarSign />, label: t('sidebar.links.expenses') },
+    { to: '/accounting', icon: <FiBriefcase />, label: t('sidebar.links.accounting', { defaultValue: 'Comptabilité' }) },
   ];
 
   let links = directorLinks;

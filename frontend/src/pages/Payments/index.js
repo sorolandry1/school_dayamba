@@ -4,7 +4,7 @@ import { FiPlus, FiSearch, FiDollarSign, FiEdit2, FiTrash2, FiPrinter } from 're
 
 const emptyForm = {
   student: '', amount: '', payment_type: 'SCOLARITE',
-  status: 'PAID', due_date: '', notes: ''
+  status: 'PAID', method: 'CAISSE', due_date: '', notes: ''
 };
 
 const TYPE_LABELS = {
@@ -59,6 +59,7 @@ function Payments() {
       amount: p.amount,
       payment_type: p.payment_type,
       status: p.status,
+      method: p.method || 'CAISSE',
       due_date: p.due_date || '',
       notes: p.notes || '',
     });
@@ -349,10 +350,18 @@ function Payments() {
                     </select>
                   </div>
                   <div className="form-group">
-                    <label>Échéance</label>
+                    <label>Échéance (prochain versement)</label>
                     <input type="date" className="form-control" value={form.due_date}
                       onChange={e => setForm({...form, due_date: e.target.value})} />
                   </div>
+                </div>
+                <div className="form-group">
+                  <label>Mode d'encaissement</label>
+                  <select className="form-control" value={form.method}
+                    onChange={e => setForm({...form, method: e.target.value})}>
+                    <option value="CAISSE">Caisse (espèces)</option>
+                    <option value="BANQUE">Banque (virement/chèque)</option>
+                  </select>
                 </div>
                 <div className="form-group">
                   <label>Notes</label>

@@ -1,5 +1,27 @@
 from rest_framework import serializers
-from .models import AcademicYear, Level, Classe
+from .models import AcademicYear, Level, Classe, ScheduleEntry
+
+
+class ScheduleEntrySerializer(serializers.ModelSerializer):
+    day_label = serializers.CharField(source='get_day_display', read_only=True)
+    classe_name = serializers.CharField(source='classe.name', read_only=True)
+    subject_label = serializers.SerializerMethodField()
+    teacher_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ScheduleEntry
+        fields = ['id', 'classe', 'classe_name', 'subject', 'subject_name', 'subject_label',
+                  'teacher_name', 'room', 'day', 'day_label', 'start_time', 'end_time']
+
+    def get_subject_label(self, obj):
+        if obj.subject:
+            return obj.subject.name
+        return obj.subject_name or '—'
+
+    def get_teacher_name(self, obj):
+        if obj.subject and obj.subject.teacher:
+            return obj.subject.teacher.full_name
+        return None
 
 
 class AcademicYearSerializer(serializers.ModelSerializer):

@@ -51,3 +51,28 @@ class Classe(models.Model):
     @property
     def student_count(self):
         return self.students.count()
+
+
+class ScheduleEntry(models.Model):
+    """Créneau d'emploi du temps : classe, matière, salle, jour, horaires."""
+    DAYS = [
+        (0, 'Lundi'), (1, 'Mardi'), (2, 'Mercredi'),
+        (3, 'Jeudi'), (4, 'Vendredi'), (5, 'Samedi'),
+    ]
+    classe = models.ForeignKey(Classe, on_delete=models.CASCADE, related_name='schedule')
+    subject = models.ForeignKey(
+        'subjects.Subject', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='schedule_entries'
+    )
+    subject_name = models.CharField(max_length=100, blank=True, default='')  # libellé libre si pas de matière liée
+    room = models.CharField(max_length=50, blank=True, default='')  # salle
+    day = models.IntegerField(choices=DAYS, default=0)
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+
+    class Meta:
+        db_table = 'schedule_entries'
+        ordering = ['day', 'start_time']
+
+    def __str__(self):
+        return f"{self.classe.name} — {self.get_day_display()} {self.start_time}"

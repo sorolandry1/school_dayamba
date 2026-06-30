@@ -12,9 +12,14 @@ class Expense(models.Model):
         EVENEMENTS = 'EVENEMENTS', 'Événements & Sorties'
         AUTRE = 'AUTRE', 'Autre'
 
+    class Method(models.TextChoices):
+        CAISSE = 'CAISSE', 'Caisse'
+        BANQUE = 'BANQUE', 'Banque'
+
     label = models.CharField(max_length=200)
     category = models.CharField(max_length=20, choices=Category.choices, default=Category.AUTRE)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
+    method = models.CharField(max_length=10, choices=Method.choices, default=Method.CAISSE)
     date = models.DateField(default=timezone.now)
     description = models.TextField(blank=True, default='')
     recorded_by = models.ForeignKey(
@@ -51,6 +56,11 @@ class Payment(models.Model):
         max_length=20, choices=PaymentType.choices, default=PaymentType.SCOLARITE
     )
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    method = models.CharField(
+        max_length=10,
+        choices=[('CAISSE', 'Caisse'), ('BANQUE', 'Banque')],
+        default='CAISSE',
+    )
     payment_date = models.DateField(default=timezone.now)
     due_date = models.DateField(null=True, blank=True)
     receipt_number = models.CharField(max_length=50, unique=True, blank=True)

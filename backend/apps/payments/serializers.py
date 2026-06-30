@@ -8,7 +8,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Expense
-        fields = ['id', 'label', 'category', 'category_label', 'amount', 'date',
+        fields = ['id', 'label', 'category', 'category_label', 'amount', 'method', 'date',
                   'description', 'recorded_by', 'recorded_by_name', 'created_at']
         read_only_fields = ['recorded_by', 'created_at']
 
@@ -27,7 +27,7 @@ class PaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
         fields = ['id', 'student', 'student_name', 'amount', 'payment_type',
-                  'status', 'payment_date', 'due_date', 'receipt_number',
+                  'status', 'method', 'payment_date', 'due_date', 'receipt_number',
                   'notes', 'recorded_by', 'recorded_by_name', 'created_at',
                   'class_tuition', 'classe_name']
         read_only_fields = ['recorded_by', 'receipt_number', 'created_at']

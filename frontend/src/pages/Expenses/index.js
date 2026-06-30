@@ -26,6 +26,7 @@ const EMPTY_FORM = {
   label: '',
   category: 'AUTRE',
   amount: '',
+  method: 'CAISSE',
   date: new Date().toISOString().slice(0, 10),
   description: '',
 };
@@ -66,6 +67,7 @@ function Expenses() {
       label: exp.label,
       category: exp.category,
       amount: exp.amount,
+      method: exp.method || 'CAISSE',
       date: exp.date,
       description: exp.description,
     });
@@ -242,12 +244,22 @@ function Expenses() {
                       onChange={e => setForm({ ...form, date: e.target.value })} />
                   </div>
                 </div>
-                <div className="form-group">
-                  <label>Montant (FCFA) *</label>
-                  <input type="number" className="form-control" required min={0} step={100}
-                    value={form.amount}
-                    onChange={e => setForm({ ...form, amount: e.target.value })}
-                    placeholder="Ex: 50000" />
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Montant (FCFA) *</label>
+                    <input type="number" className="form-control" required min={0} step={100}
+                      value={form.amount}
+                      onChange={e => setForm({ ...form, amount: e.target.value })}
+                      placeholder="Ex: 50000" />
+                  </div>
+                  <div className="form-group">
+                    <label>Payé par</label>
+                    <select className="form-control" value={form.method}
+                      onChange={e => setForm({ ...form, method: e.target.value })}>
+                      <option value="CAISSE">Caisse (espèces)</option>
+                      <option value="BANQUE">Banque</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="form-group">
                   <label>Description</label>

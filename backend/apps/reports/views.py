@@ -222,6 +222,89 @@ class DashboardStatsView(APIView):
         return Response(result)
 
 
+class AccountingView(APIView):
+    """Comptabilité : compte de résultat, caisse, banque, bilan simplifié."""
+    permission_classes = [IsCashManager]
+
+    def get(self, request):
+        from django.db.models import Sum
+        from apps.payments.models import Expense
+
+        paid = Payment.objects.filter(status='PAID')
+        produits = float(paid.aggregate(t=Sum('amount'))['t'] or 0)
+        charges = float(Expense.objects.aggregate(t=Sum('amount'))['t'] or 0)
+        resultat = produits - charges
+        creances = float(Payment.objects.filter(status__in=['PENDING', 'OVERDUE'])
+                         .aggregate(t=Sum('amount'))['t'] or 0)
+
+        def solde(method):
+            r = float(paid.filter(method=method).aggregate(t=Sum('amount'))['t'] or 0)
+            d = float(Expense.objects.filter(method=method).aggregate(t=Sum('amount'))['t'] or 0)
+            return {'recettes': r, 'depenses': d, 'solde': r - d}
+
+        caisse = solde('CAISSE')
+        banque = solde('BANQUE')
+        tresorerie = caisse['solde'] + banque['solde']
+
+        return Response({
+            'compte_resultat': {'produits': produits, 'charges': charges, 'resultat': resultat},
+            'caisse': caisse,
+            'banque': banque,
+            'bilan': {
+                'tresorerie': tresorerie,
+                'creances': creances,
+                'total_actif': tresorerie + creances,
+                'resultat': resultat,
+            },
+        })
+
+
+class AccountingExportView(APIView):
+    """Export comptable Excel de toutes les écritures (recettes + dépenses)."""
+    permission_classes = [IsCashManager]
+
+    def get(self, request):
+        from apps.payments.models import Expense
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Journal comptable'
+        headers = ['Date', 'Type', 'Libellé', 'Méthode', 'Recette (FCFA)', 'Dépense (FCFA)']
+        ws.append(headers)
+        for col in range(1, len(headers) + 1):
+            c = ws.cell(row=1, column=col)
+            c.font = Font(bold=True, color='FFFFFF')
+            c.fill = PatternFill('solid', fgColor='1E40AF')
+            c.alignment = Alignment(horizontal='center')
+
+        rows = []
+        for p in Payment.objects.filter(status='PAID').select_related('student'):
+            rows.append((p.payment_date, 'Recette',
+                         f"{p.get_payment_type_display()} — {p.student.full_name}",
+                         dict(Payment._meta.get_field('method').choices).get(p.method, p.method),
+                         float(p.amount), 0))
+        for e in Expense.objects.all():
+            rows.append((e.date, 'Dépense', f"{e.label} ({e.get_category_display()})",
+                         e.get_method_display(), 0, float(e.amount)))
+        rows.sort(key=lambda r: str(r[0]))
+
+        tot_r = tot_d = 0
+        for r in rows:
+            ws.append([str(r[0]), r[1], r[2], r[3], r[4] or '', r[5] or ''])
+            tot_r += r[4]; tot_d += r[5]
+        ws.append([])
+        ws.append(['', '', 'TOTAUX', '', tot_r, tot_d])
+        ws.append(['', '', 'RÉSULTAT', '', tot_r - tot_d, ''])
+        for i, w in enumerate([14, 12, 40, 12, 16, 16], 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        resp = HttpResponse(output, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        resp['Content-Disposition'] = 'attachment; filename="comptabilite.xlsx"'
+        return resp
+
+
 class ChartsView(APIView):
     """Séries pour les graphiques : évolution paiements, finances, absentéisme, réussite."""
     permission_classes = [IsAdmin]

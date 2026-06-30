@@ -35,6 +35,8 @@ import EducatorDashboard from './pages/EducatorDashboard';
 import CaisseDashboard from './pages/CaisseDashboard';
 import Analytics from './pages/Analytics';
 import AcademicYears from './pages/AcademicYears';
+import Timetable from './pages/Timetable';
+import Accounting from './pages/Accounting';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, isAuthenticated } = useAuth();
@@ -107,6 +109,7 @@ function AppRoutes() {
         <Route path="/attendance" element={<AttendanceScanner />} />
         <Route path="/communications" element={<Communications />} />
         <Route path="/bulletins" element={<Bulletins />} />
+        <Route path="/timetable" element={<Timetable />} />
       </Route>
 
       {/* Routes Caisse (Admin / Directeur / Caisse) */}
@@ -118,6 +121,7 @@ function AppRoutes() {
         <Route path="/caisse" element={<CaisseDashboard />} />
         <Route path="/payments" element={<Payments />} />
         <Route path="/expenses" element={<Expenses />} />
+        <Route path="/accounting" element={<Accounting />} />
       </Route>
 
       {/* Teacher routes */}
