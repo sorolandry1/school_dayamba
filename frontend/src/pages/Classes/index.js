@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import {
   FiUsers, FiPrinter, FiBook, FiGrid,
-  FiAward, FiAlertCircle, FiPlus, FiX, FiTrash2, FiLock
+  FiAward, FiAlertCircle, FiPlus, FiX, FiTrash2, FiLock, FiDollarSign
 } from 'react-icons/fi';
 
 const LEVELS = ['6ème', '5ème', '4ème', '3ème', '2nde', '1ère', 'Terminale'];
@@ -34,6 +34,10 @@ export default function Classes() {
   const [modalLevel, setModalLevel] = useState(null);
   const [formName, setFormName]   = useState('');
   const [formCapacity, setFormCapacity] = useState(50);
+  const [formTuition, setFormTuition] = useState(0);
+  // Édition de la scolarité d'une classe existante
+  const [tuitionInput, setTuitionInput] = useState('');
+  const [savingTuition, setSavingTuition] = useState(false);
   const [saving, setSaving]       = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -100,6 +104,7 @@ export default function Classes() {
       return;
     }
     setSelectedClasse(classe);
+    setTuitionInput(classe.tuition_fee != null ? String(Math.round(Number(classe.tuition_fee))) : '0');
     if (!students[classe.id]) {
       setLoadingStudents(true);
       try {
@@ -132,6 +137,19 @@ export default function Classes() {
     }
   };
 
+  const saveTuition = async () => {
+    if (!selectedClasse) return;
+    setSavingTuition(true);
+    try {
+      const res = await api.patch(`/classes/${selectedClasse.id}/`, { tuition_fee: Number(tuitionInput) || 0 });
+      setClasses(prev => prev.map(c => c.id === selectedClasse.id ? { ...c, tuition_fee: res.data.tuition_fee } : c));
+      setSelectedClasse(prev => ({ ...prev, tuition_fee: res.data.tuition_fee }));
+      alert('Frais de scolarité enregistrés.');
+    } catch (err) {
+      alert('Erreur: ' + JSON.stringify(err.response?.data));
+    } finally { setSavingTuition(false); }
+  };
+
   const openDeleteModal = (e, classe) => {
     e.stopPropagation();
     setDeleteTarget(classe);
@@ -161,6 +179,7 @@ export default function Classes() {
     setModalLevel(levelName);
     setFormName(`${levelName} `);
     setFormCapacity(50);
+    setFormTuition(0);
     setFormError('');
     setModal(true);
   };
@@ -178,6 +197,7 @@ export default function Classes() {
         name: formName.trim(),
         level_name: modalLevel,
         capacity: Number(formCapacity) || 50,
+        tuition_fee: Number(formTuition) || 0,
       };
       if (levelsMap[modalLevel]) payload.level = levelsMap[modalLevel];
       if (currentYearId) payload.academic_year = currentYearId;
@@ -503,6 +523,25 @@ export default function Classes() {
                       </div>
                     </div>
 
+                    {/* Frais de scolarité de la classe (modifiable) */}
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                      padding: '12px 20px', background: '#f8fafc', borderBottom: '1px solid var(--gray-200)',
+                    }}>
+                      <FiDollarSign size={15} color="#667085" />
+                      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#344054' }}>Frais de scolarité :</span>
+                      <input type="number" min={0} step={1000} className="form-control"
+                        style={{ maxWidth: 180 }} value={tuitionInput}
+                        onChange={e => setTuitionInput(e.target.value)} />
+                      <span style={{ fontSize: '0.85rem', color: '#667085' }}>FCFA</span>
+                      <button className="btn btn-sm btn-primary" onClick={saveTuition} disabled={savingTuition}>
+                        {savingTuition ? '...' : 'Enregistrer'}
+                      </button>
+                      <span style={{ fontSize: '0.78rem', color: '#98a2b3' }}>
+                        (apparaît sur les reçus : total, reste à payer)
+                      </span>
+                    </div>
+
                     {loadingStudents ? (
                       <div style={{ padding: 32, textAlign: 'center', color: 'var(--gray-400)' }}>
                         <div className="spinner" style={{ margin: '0 auto 8px' }} />
@@ -810,6 +849,21 @@ export default function Classes() {
                   onChange={e => setFormCapacity(e.target.value)}
                   min={1}
                   max={100}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginTop: 16 }}>
+                <label style={{ fontWeight: 600, fontSize: '0.85rem', display: 'block', marginBottom: 6 }}>
+                  Frais de scolarité (FCFA)
+                </label>
+                <input
+                  type="number"
+                  className="form-control"
+                  value={formTuition}
+                  onChange={e => setFormTuition(e.target.value)}
+                  min={0}
+                  step={1000}
+                  placeholder="ex. 150000"
                 />
               </div>
 

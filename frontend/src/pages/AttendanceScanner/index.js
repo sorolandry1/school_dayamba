@@ -12,6 +12,7 @@ function AttendanceScanner() {
   const [loading, setLoading] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameras, setCameras] = useState([]);
+  const [selectedCameraId, setSelectedCameraId] = useState('');
   const scannerRef = useRef(null);
   const scannerInstanceRef = useRef(null);
 
@@ -51,20 +52,31 @@ function AttendanceScanner() {
     }
   };
 
-  const startCamera = async () => {
+  // Choisit la caméra arrière si détectée (mobile), sinon la première (PC)
+  const pickDefaultCamera = (devices) => {
+    const back = devices.find(d => /back|rear|environment|arri[èe]re|world/i.test(d.label || ''));
+    return (back || devices[0]).id;
+  };
+
+  const startCamera = async (camId) => {
     setError('');
     setResult(null);
     try {
-      const devices = await Html5Qrcode.getCameras();
+      let devices = cameras;
+      if (!devices || devices.length === 0) {
+        devices = await Html5Qrcode.getCameras();
+        setCameras(devices || []);
+      }
       if (!devices || devices.length === 0) {
         setError('Aucune caméra détectée sur cet appareil.');
         return;
       }
-      setCameras(devices);
+      const cameraId = camId || selectedCameraId || pickDefaultCamera(devices);
+      setSelectedCameraId(cameraId);
+
       const html5QrCode = new Html5Qrcode('qr-reader');
       scannerInstanceRef.current = html5QrCode;
 
-      const cameraId = devices[devices.length - 1].id; // prefer back camera
       await html5QrCode.start(
         cameraId,
         { fps: 10, qrbox: { width: 250, height: 250 } },
@@ -75,10 +87,23 @@ function AttendanceScanner() {
         () => {} // suppress frame errors
       );
       setCameraActive(true);
+
+      // Après autorisation, les libellés des caméras sont disponibles : on rafraîchit la liste
+      try {
+        const refreshed = await Html5Qrcode.getCameras();
+        if (refreshed && refreshed.length) setCameras(refreshed);
+      } catch (_) {}
     } catch (err) {
       setError('Impossible d\'accéder à la caméra. Vérifiez les permissions.');
       console.error(err);
     }
+  };
+
+  // Change de caméra (téléphone avant/arrière, ou webcam PC) sans quitter le scan
+  const switchCamera = async (id) => {
+    setSelectedCameraId(id);
+    await stopCamera();
+    startCamera(id);
   };
 
   const stopCamera = async () => {
@@ -136,6 +161,23 @@ function AttendanceScanner() {
             <h3><FiCamera size={18} style={{ marginRight: 8 }} />Scanner QR par caméra</h3>
           </div>
           <div className="card-body">
+            {/* Sélecteur de caméra (utile sur PC à plusieurs webcams, ou avant/arrière sur mobile) */}
+            {cameras.length > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', marginBottom: 14 }}>
+                <FiCamera size={14} color="#667085" />
+                <select
+                  className="form-control"
+                  style={{ maxWidth: 320 }}
+                  value={selectedCameraId}
+                  onChange={e => (cameraActive ? switchCamera(e.target.value) : setSelectedCameraId(e.target.value))}
+                >
+                  {cameras.map((c, i) => (
+                    <option key={c.id} value={c.id}>{c.label || `Caméra ${i + 1}`}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* Zone caméra html5-qrcode */}
             <div
               id="qr-reader"

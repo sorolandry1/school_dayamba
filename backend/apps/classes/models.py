@@ -37,6 +37,8 @@ class Classe(models.Model):
     level = models.ForeignKey(Level, on_delete=models.CASCADE, related_name='classes')
     academic_year = models.ForeignKey(AcademicYear, on_delete=models.CASCADE, related_name='classes')
     capacity = models.IntegerField(default=50)
+    # Frais de scolarité annuels de la classe (sert au calcul du reste sur le reçu)
+    tuition_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     class Meta:
         db_table = 'classes'

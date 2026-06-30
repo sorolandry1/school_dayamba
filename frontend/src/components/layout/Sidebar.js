@@ -201,10 +201,20 @@ function Sidebar({ isOpen, onClose }) {
     { to: '/communications', icon: <FiMessageSquare />, label: t('sidebar.links.communications') },
   ];
 
+  // --- CAISSE ---
+  const caisseLinks = [
+    { section: t('sidebar.sections.mon_espace') },
+    { to: '/caisse', icon: <FiHome />, label: t('sidebar.links.dashboard') },
+    { section: t('sidebar.sections.administration') },
+    { to: '/payments', icon: <FiDollarSign />, label: t('sidebar.links.payments') },
+    { to: '/expenses', icon: <FiDollarSign />, label: t('sidebar.links.expenses') },
+  ];
+
   let links = directorLinks;
   if (user?.role === 'TEACHER') links = teacherLinks;
   else if (user?.role === 'AGENT') links = agentLinks;
   else if (user?.role === 'EDUCATEUR') links = educatorLinks;
+  else if (user?.role === 'CAISSE') links = caisseLinks;
 
   const initials = user
     ? `${(user.first_name || '')[0] || ''}${(user.last_name || '')[0] || ''}`.toUpperCase()

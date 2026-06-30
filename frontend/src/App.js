@@ -32,6 +32,7 @@ import StudentCards from './pages/StudentCards';
 import SuperAdmin from './pages/SuperAdmin';
 import DocumentEditor from './pages/DocumentEditor';
 import EducatorDashboard from './pages/EducatorDashboard';
+import CaisseDashboard from './pages/CaisseDashboard';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, isAuthenticated } = useAuth();
@@ -41,6 +42,7 @@ function ProtectedRoute({ children, allowedRoles }) {
     if (user.role === 'TEACHER') return <Navigate to="/teacher" replace />;
     if (user.role === 'AGENT') return <Navigate to="/scan" replace />;
     if (user.role === 'EDUCATEUR') return <Navigate to="/educator" replace />;
+    if (user.role === 'CAISSE') return <Navigate to="/caisse" replace />;
     return <Navigate to="/dashboard" replace />;
   }
   return children;
@@ -57,6 +59,7 @@ function AppRoutes() {
             user?.role === 'TEACHER' ? '/teacher'
             : user?.role === 'AGENT' ? '/scan'
             : user?.role === 'EDUCATEUR' ? '/educator'
+            : user?.role === 'CAISSE' ? '/caisse'
             : '/dashboard'
           } replace />
         ) : <Login />
@@ -77,12 +80,10 @@ function AppRoutes() {
       }>
         <Route path="/dashboard" element={<AdminDashboard />} />
         <Route path="/grades" element={<GradesManagement />} />
-        <Route path="/payments" element={<Payments />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/users" element={<Users />} />
         <Route path="/subjects" element={<Subjects />} />
         <Route path="/logs" element={<ActivityLogs />} />
-        <Route path="/expenses" element={<Expenses />} />
         <Route path="/student-cards" element={<StudentCards />} />
         <Route path="/super-admin" element={<SuperAdmin />} />
         <Route path="/document-editor" element={<DocumentEditor />} />
@@ -102,6 +103,17 @@ function AppRoutes() {
         <Route path="/attendance" element={<AttendanceScanner />} />
         <Route path="/communications" element={<Communications />} />
         <Route path="/bulletins" element={<Bulletins />} />
+      </Route>
+
+      {/* Routes Caisse (Admin / Directeur / Caisse) */}
+      <Route element={
+        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'CAISSE']}>
+          <AppLayout />
+        </ProtectedRoute>
+      }>
+        <Route path="/caisse" element={<CaisseDashboard />} />
+        <Route path="/payments" element={<Payments />} />
+        <Route path="/expenses" element={<Expenses />} />
       </Route>
 
       {/* Teacher routes */}

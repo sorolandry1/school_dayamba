@@ -11,6 +11,7 @@ class User(AbstractUser):
         TEACHER = 'TEACHER', 'Professeur'
         AGENT = 'AGENT', 'Agent d\'accueil'
         EDUCATEUR = 'EDUCATEUR', 'Éducateur'
+        CAISSE = 'CAISSE', 'Caisse'
 
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.TEACHER)
     phone = models.CharField(max_length=20, blank=True, default='')
@@ -67,6 +68,7 @@ class Invitation(models.Model):
         ('TEACHER', 'Professeur'),
         ('AGENT', "Agent d'accueil"),
         ('EDUCATEUR', 'Éducateur'),
+        ('CAISSE', 'Caisse'),
     ]
 
     token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)

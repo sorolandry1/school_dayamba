@@ -110,6 +110,7 @@ function Register() {
       const dest = user.role === 'TEACHER' ? '/teacher'
         : user.role === 'AGENT' ? '/scan'
         : user.role === 'EDUCATEUR' ? '/educator'
+        : user.role === 'CAISSE' ? '/caisse'
         : '/dashboard';
       window.location.href = dest;
     } catch (err) {

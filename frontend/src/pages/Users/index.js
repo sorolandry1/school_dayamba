@@ -11,6 +11,7 @@ const ROLE_LABELS = {
   TEACHER: 'Professeur',
   AGENT: 'Agent d\'accueil',
   EDUCATEUR: 'Éducateur',
+  CAISSE: 'Caisse',
   ADMIN: 'Administrateur',
 };
 
@@ -19,6 +20,7 @@ const ROLE_COLORS = {
   TEACHER: '#10b981',
   AGENT: '#f59e0b',
   EDUCATEUR: '#06b6d4',
+  CAISSE: '#e11d48',
   ADMIN: '#8b5cf6',
 };
 
@@ -512,6 +514,7 @@ function Users() {
                     <option value="TEACHER">Professeur</option>
                     <option value="AGENT">Agent d'accueil</option>
                     <option value="EDUCATEUR">Éducateur</option>
+                    <option value="CAISSE">Caisse</option>
                   </select>
                 </div>
                 <div className="form-group" style={{ margin: 0, flex: 1, minWidth: 160 }}>

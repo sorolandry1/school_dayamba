@@ -86,9 +86,37 @@ function Payments() {
     fetchPayments();
   };
 
-  const printReceipt = (p) => {
+  const printReceipt = async (p) => {
     const studentName = p.student_name || '-';
+    const fcfa = (n) => `${Number(n || 0).toLocaleString('fr-FR')} FCFA`;
+
+    // Ouvre la fenêtre IMMÉDIATEMENT (dans le geste utilisateur) pour éviter
+    // le blocage par le navigateur, puis on la remplit après l'appel réseau.
     const w = window.open('', '_blank', 'width=600,height=700');
+
+    // Récupère le cumul déjà versé par l'élève pour calculer le reste
+    const tuition = Number(p.class_tuition || 0);
+    let totalPaid = 0;
+    if (p.student) {
+      try {
+        const res = await api.get(`/payments/student_history/?student_id=${p.student}`);
+        totalPaid = Number(res.data.total_paid || 0);
+      } catch (_) {}
+    }
+    const reste = Math.max(0, tuition - totalPaid);
+    const nextDate = p.due_date ? new Date(p.due_date).toLocaleDateString('fr-FR') : '—';
+
+    const scolariteBlock = tuition > 0 ? `
+      <div class="divider"></div>
+      <div class="row"><span class="label">Scolarité totale (${p.classe_name || ''})</span><span class="value">${fcfa(tuition)}</span></div>
+      <div class="row"><span class="label">Total déjà versé</span><span class="value">${fcfa(totalPaid)}</span></div>
+      <div class="row"><span class="label">Reste à payer</span><span class="value" style="color:${reste > 0 ? '#c53030' : '#276749'}">${fcfa(reste)}</span></div>
+      <div class="row"><span class="label">Date du prochain versement</span><span class="value">${nextDate}</span></div>
+    ` : `
+      <div class="row"><span class="label">Date du prochain versement</span><span class="value">${nextDate}</span></div>
+    `;
+
+    if (!w) { alert('Veuillez autoriser les fenêtres pop-up pour imprimer le reçu.'); return; }
     w.document.write(`
       <html><head><title>Reçu ${p.receipt_number}</title>
       <style>
@@ -112,7 +140,9 @@ function Payments() {
       <div class="row"><span class="label">Statut</span><span class="value"><span class="badge">${p.status}</span></span></div>
       ${p.notes ? `<div class="row"><span class="label">Notes</span><span class="value">${p.notes}</span></div>` : ''}
       <div class="divider"></div>
-      <div class="amount">${Number(p.amount).toLocaleString()} FCFA</div>
+      <div class="row"><span class="label">Montant versé (ce reçu)</span><span class="value">${fcfa(p.amount)}</span></div>
+      <div class="amount">${fcfa(p.amount)}</div>
+      ${scolariteBlock}
       <div class="divider"></div>
       <div class="footer">SchoolPro · Gestion Scolaire · Document généré le ${new Date().toLocaleDateString('fr-FR')}</div>
       </body></html>

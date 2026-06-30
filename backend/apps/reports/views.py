@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.http import HttpResponse
 from django.db.models import Sum, Count, Q, Avg as DAvg
-from apps.users.permissions import IsAdmin, IsAdminOrTeacher, CanViewReports
+from apps.users.permissions import IsAdmin, IsAdminOrTeacher, CanViewReports, IsCashManager
 from apps.students.models import Student
 from apps.grades.models import Grade
 from apps.subjects.models import Subject
@@ -102,18 +102,12 @@ class BulletinClassePDFView(APIView):
 
         subjects = Subject.objects.select_related('teacher', 'teacher__user').filter(classe=classe)
 
-        # Template support
-        from .models import DocumentTemplate
-        template_config = None
-        template_id = request.query_params.get('template_id')
-        if template_id:
-            tmpl = DocumentTemplate.objects.filter(id=template_id, document_type='bulletin').first()
-            if tmpl:
-                template_config = tmpl.config
-        else:
-            tmpl = DocumentTemplate.objects.filter(document_type='bulletin', is_default=True).first()
-            if tmpl:
-                template_config = tmpl.config
+        # Template support (modèle de l'éditeur ou défaut par type d'établissement)
+        template_config = _resolve_template(
+            'bulletin',
+            template_id=request.query_params.get('template_id'),
+            school_type=request.query_params.get('school_type'),
+        )
 
         # Pre-calculate rankings for all students once
         rankings_map = self._calculate_all_rankings(students, subjects)
@@ -634,8 +628,12 @@ class PlatformSettingsView(APIView):
 def _resolve_template(document_type, template_id=None, school_type=None):
     """Return template config dict or None. Prefers school-type-specific default."""
     from .models import DocumentTemplate
-    if template_id:
-        tmpl = DocumentTemplate.objects.filter(id=template_id, document_type=document_type).first()
+    # template_id peut arriver sous forme de chaîne ('null', '') — on sécurise
+    if template_id not in (None, '', 'null', 'undefined'):
+        try:
+            tmpl = DocumentTemplate.objects.filter(id=int(template_id), document_type=document_type).first()
+        except (ValueError, TypeError):
+            tmpl = None
         if tmpl:
             return tmpl.config
     st = school_type or _get_platform_school_type()
@@ -821,7 +819,7 @@ class SubjectSheetPDFView(APIView):
 
 
 class ReceiptPDFView(APIView):
-    permission_classes = [IsAdmin]
+    permission_classes = [IsCashManager]
 
     def get(self, request, payment_id):
         try:

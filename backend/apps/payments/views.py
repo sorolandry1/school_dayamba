@@ -2,7 +2,9 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Sum, Count, Q
-from apps.users.permissions import IsAdmin, IsAdminOrReadOnly, IsCommunicationStaff
+from apps.users.permissions import (
+    IsAdmin, IsAdminOrReadOnly, IsCommunicationStaff, IsCashStaff, IsCashManager,
+)
 from utils.sms_service import send_sms
 from utils.email_service import send_bulk_email
 from .models import Payment, Expense
@@ -12,7 +14,7 @@ from .serializers import PaymentSerializer, ExpenseSerializer
 class PaymentViewSet(viewsets.ModelViewSet):
     queryset = Payment.objects.select_related('student', 'student__classe', 'recorded_by').all()
     serializer_class = PaymentSerializer
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsCashStaff]
     filterset_fields = ['student', 'status', 'payment_type', 'student__classe']
     search_fields = ['student__first_name', 'student__last_name', 'receipt_number']
     ordering_fields = ['payment_date', 'amount']
@@ -81,7 +83,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
 class ExpenseViewSet(viewsets.ModelViewSet):
     queryset = Expense.objects.select_related('recorded_by').all()
     serializer_class = ExpenseSerializer
-    permission_classes = [IsAdmin]
+    permission_classes = [IsCashManager]
     filterset_fields = ['category']
     search_fields = ['label', 'description']
     ordering_fields = ['date', 'amount']

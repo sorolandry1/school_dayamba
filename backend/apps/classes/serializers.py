@@ -22,7 +22,7 @@ class ClasseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Classe
         fields = ['id', 'name', 'level', 'level_name', 'academic_year',
-                  'academic_year_name', 'capacity', 'student_count']
+                  'academic_year_name', 'capacity', 'tuition_fee', 'student_count']
 
 
 class ClasseDetailSerializer(ClasseSerializer):
