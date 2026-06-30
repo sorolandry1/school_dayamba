@@ -6,9 +6,10 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.http import HttpResponse
 from django.db.models import Sum, Count, Q, Avg as DAvg
-from apps.users.permissions import IsAdmin, IsAdminOrTeacher
+from apps.users.permissions import IsAdmin, IsAdminOrTeacher, CanViewReports
 from apps.students.models import Student
 from apps.grades.models import Grade
 from apps.subjects.models import Subject
@@ -18,12 +19,13 @@ from apps.classes.models import Classe
 from utils.pdf_generator import (
     generate_bulletin_pdf, generate_bulletin_pdf_templated,
     generate_receipt_pdf_templated, generate_card_pdf_templated,
+    generate_class_list_pdf, generate_subject_sheet_pdf,
 )
 from django.db.models import Avg, Count, Q
 
 
 class BulletinPDFView(APIView):
-    permission_classes = [IsAdminOrTeacher]
+    permission_classes = [CanViewReports]
 
     def _get_template_config(self, request):
         return _resolve_template(
@@ -42,10 +44,12 @@ class BulletinPDFView(APIView):
         rankings_data = self._calculate_rankings(student)
         template_config = self._get_template_config(request)
 
-        if template_config:
-            pdf_buffer = generate_bulletin_pdf_templated(student, subjects, rankings_data, template_config)
-        else:
-            pdf_buffer = generate_bulletin_pdf(student, subjects, rankings_data)
+        # Toujours via le générateur templaté (comme les cartes et les reçus) :
+        # le design est personnalisable par l'administrateur ; sinon, valeurs
+        # par défaut + identité de l'établissement (Super-Admin).
+        pdf_buffer = generate_bulletin_pdf_templated(
+            student, subjects, rankings_data, template_config or {}
+        )
 
         response = HttpResponse(pdf_buffer, content_type='application/pdf')
         response['Content-Disposition'] = (
@@ -84,7 +88,7 @@ class BulletinPDFView(APIView):
 
 class BulletinClassePDFView(APIView):
     """Generate a ZIP containing all bulletins for a given class."""
-    permission_classes = [IsAdminOrTeacher]
+    permission_classes = [CanViewReports]
 
     def get(self, request, classe_id):
         try:
@@ -118,10 +122,9 @@ class BulletinClassePDFView(APIView):
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
             for student in students:
                 rankings_data = rankings_map.get(student.id, {})
-                if template_config:
-                    pdf_buffer = generate_bulletin_pdf_templated(student, subjects, rankings_data, template_config)
-                else:
-                    pdf_buffer = generate_bulletin_pdf(student, subjects, rankings_data)
+                pdf_buffer = generate_bulletin_pdf_templated(
+                    student, subjects, rankings_data, template_config or {}
+                )
                 filename = f"bulletin_{student.matricule}_{student.last_name}_{student.first_name}.pdf"
                 zf.writestr(filename, pdf_buffer.read())
 
@@ -372,7 +375,7 @@ class ExcelExportView(APIView):
                     g.student.full_name,
                     g.student.classe.name if g.student.classe else '—',
                     g.subject.name,
-                    g.get_type_evaluation_display(),
+                    g.type_evaluation,
                     float(g.value),
                     float(g.max_value),
                     g.normalized_value,
@@ -581,12 +584,51 @@ class ClassStatsView(APIView):
 
 
 def _get_platform_school_type():
-    """Return the school_type stored in platform settings (DB or env), defaulting to 'all'."""
+    """Return the school_type stored in platform settings (DB), defaulting to 'all'."""
+    try:
+        from .models import PlatformSettings
+        st = PlatformSettings.get_solo().school_type
+        if st:
+            return st
+    except Exception:
+        pass
     try:
         from django.conf import settings as _s
         return getattr(_s, 'SCHOOL_TYPE', 'all') or 'all'
     except Exception:
         return 'all'
+
+
+class PlatformSettingsView(APIView):
+    """Réglages d'identité de l'établissement (singleton).
+    Lecture : tout utilisateur authentifié. Écriture : admin/directeur."""
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_permissions(self):
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return [IsAuthenticated()]
+        return [IsAdmin()]
+
+    def get(self, request):
+        from .models import PlatformSettings
+        from .serializers import PlatformSettingsSerializer
+        obj = PlatformSettings.get_solo()
+        return Response(PlatformSettingsSerializer(obj, context={'request': request}).data)
+
+    def put(self, request):
+        return self._update(request)
+
+    def patch(self, request):
+        return self._update(request)
+
+    def _update(self, request):
+        from .models import PlatformSettings
+        from .serializers import PlatformSettingsSerializer
+        obj = PlatformSettings.get_solo()
+        ser = PlatformSettingsSerializer(obj, data=request.data, partial=True, context={'request': request})
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)
 
 
 def _resolve_template(document_type, template_id=None, school_type=None):
@@ -673,6 +715,110 @@ class DocumentTemplateDetailView(APIView):
 # ────────────────────────────────────────────────────────────────
 # Receipt & Card PDF with template support
 # ────────────────────────────────────────────────────────────────
+
+class ClassListPDFView(APIView):
+    """Liste d'une classe en PDF, par ordre de mérite ou alphabétique.
+    Accessible aux professeurs, éducateurs et à l'administration."""
+    permission_classes = [CanViewReports]
+
+    def get(self, request, classe_id):
+        order = request.query_params.get('order', 'merit')
+        if order not in ('merit', 'alpha'):
+            order = 'merit'
+        try:
+            classe = Classe.objects.select_related('level', 'academic_year').get(id=classe_id)
+        except Classe.DoesNotExist:
+            return Response({'error': 'Classe non trouvée.'}, status=404)
+
+        students = Student.objects.filter(classe=classe, is_active=True)
+        subjects = list(Subject.objects.filter(classe=classe).order_by('name'))
+        subj_meta = [{'name': s.name, 'coefficient': float(s.coefficient)} for s in subjects]
+
+        rows = []
+        for s in students:
+            averages = []
+            total_weighted, total_coeff = 0, 0
+            for subj in subjects:
+                grades = Grade.objects.filter(student=s, subject=subj)
+                if grades.exists():
+                    a = round(float(grades.aggregate(a=Avg('value'))['a']), 2)
+                    averages.append(a)
+                    total_weighted += a * float(subj.coefficient)
+                    total_coeff += float(subj.coefficient)
+                else:
+                    averages.append(None)
+            general = round(total_weighted / total_coeff, 2) if total_coeff > 0 else None
+            rows.append({
+                'name': s.full_name,
+                'averages': averages,
+                'total': round(total_weighted, 2),
+                'average': general,
+            })
+
+        if order == 'alpha':
+            rows.sort(key=lambda r: r['name'].lower())
+        else:
+            rows.sort(key=lambda r: (r['average'] is None, -(r['average'] or 0)))
+
+        pdf = generate_class_list_pdf(classe, subj_meta, rows, order)
+        safe = classe.name.replace(' ', '_').replace('/', '-')
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="liste_{safe}_{order}.pdf"'
+        return response
+
+
+class SubjectSheetPDFView(APIView):
+    """Feuille de notes (Nom & Prénom · Notes saisies · Moyenne) d'une matière
+    pour une classe — imprimable par le professeur."""
+    permission_classes = [IsAdminOrTeacher]
+
+    def get(self, request):
+        subject_id = request.query_params.get('subject_id')
+        classe_id = request.query_params.get('classe_id')
+        order = request.query_params.get('order', 'merit')
+        if order not in ('merit', 'alpha'):
+            order = 'merit'
+        if not subject_id or not classe_id:
+            return Response({'error': 'subject_id et classe_id requis.'}, status=400)
+        try:
+            subject = Subject.objects.get(id=subject_id)
+            classe = Classe.objects.select_related('academic_year').get(id=classe_id)
+        except (Subject.DoesNotExist, Classe.DoesNotExist):
+            return Response({'error': 'Matière ou classe introuvable.'}, status=404)
+
+        students = Student.objects.filter(classe=classe, is_active=True).order_by('last_name', 'first_name')
+        rows = []
+        for s in students:
+            grades = Grade.objects.filter(student=s, subject=subject).order_by('date')
+            gl = [{'value': float(g.value), 'max': float(g.max_value), 'type': g.type_evaluation}
+                  for g in grades]
+            if gl:
+                avg = round(sum(g['value'] * 20 / g['max'] if g['max'] else 0 for g in gl) / len(gl), 2)
+                total_value = round(sum(g['value'] for g in gl), 2)
+                total_max = round(sum(g['max'] for g in gl), 2)
+            else:
+                avg = None
+                total_value = total_max = None
+            rows.append({
+                'name': s.full_name, 'grades': gl, 'average': avg,
+                'total_value': total_value, 'total_max': total_max,
+            })
+
+        # Rang au mérite (sur la moyenne de la matière) — conservé même en tri alphabétique
+        ranked = sorted(rows, key=lambda r: (r['average'] is None, -(r['average'] or 0)))
+        for i, r in enumerate(ranked, start=1):
+            r['rank'] = i if r['average'] is not None else None
+        if order == 'alpha':
+            rows.sort(key=lambda r: r['name'].lower())
+        else:
+            rows = ranked
+
+        pdf = generate_subject_sheet_pdf(classe, subject, rows, order)
+        safe = f"{subject.name}_{classe.name}_{order}".replace(' ', '_').replace('/', '-')
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="notes_{safe}.pdf"'
+        return response
+
 
 class ReceiptPDFView(APIView):
     permission_classes = [IsAdmin]

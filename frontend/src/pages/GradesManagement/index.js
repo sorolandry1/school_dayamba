@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { FiPlus, FiEdit2, FiTrash2, FiSave } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiSave, FiDownload } from 'react-icons/fi';
+import { downloadFile } from '../../utils/downloadPdf';
 
 function GradesManagement() {
   const { user } = useAuth();
@@ -15,7 +16,9 @@ function GradesManagement() {
   // Filters
   const [subjects, setSubjects] = useState([]);
   const [classes, setClasses] = useState([]);
-  const [selectedSubject, setSelectedSubject] = useState(searchParams.get('subject_id') || '');
+  const [assignedClasses, setAssignedClasses] = useState([]); // classes affectées au prof
+  const [selectedSubject, setSelectedSubject] = useState(searchParams.get('subject_id') || ''); // id (non-prof)
+  const [selectedSubjectName, setSelectedSubjectName] = useState(searchParams.get('subject_name') || ''); // prof
   const [selectedClasse, setSelectedClasse] = useState(searchParams.get('classe_id') || '');
 
   // Data
@@ -27,7 +30,7 @@ function GradesManagement() {
   const [showModal, setShowModal] = useState(false);
   const [editingGrade, setEditingGrade] = useState(null);
   const [gradeForm, setGradeForm] = useState({
-    student: '', subject: '', value: '', max_value: '20', type_evaluation: 'DEVOIR', comment: ''
+    student: '', subject: '', value: '', max_value: '20', type_evaluation: 'Devoir', comment: ''
   });
 
   // Page info from URL
@@ -36,26 +39,61 @@ function GradesManagement() {
 
   useEffect(() => {
     if (isTeacher) {
-      api.get('/subjects/my_subjects/').then(r => setSubjects(r.data.results || r.data)).catch(() => {});
+      // Le prof saisit selon SES matières et SES classes affectées
+      Promise.all([
+        api.get('/subjects/my_subjects/').then(r => r.data.results || r.data).catch(() => []),
+        api.get('/teachers/me/').then(r => r.data?.assigned_classes || []).catch(() => []),
+      ]).then(([subs, assigned]) => {
+        setSubjects(subs);
+        setAssignedClasses(assigned);
+      });
     } else {
       api.get('/subjects/').then(r => setSubjects(r.data.results || r.data)).catch(() => {});
       api.get('/classes/current_year/').then(r => setClasses(r.data.results || r.data)).catch(() => {});
     }
   }, [isTeacher]);
 
+  // ── Listes dérivées pour le professeur ─────────────────────────────────────
+  // Noms de matières distincts que le prof enseigne
+  const subjectNames = isTeacher ? Array.from(new Set(subjects.map(s => s.name))) : [];
+
+  // Classes proposées une fois la matière choisie : UNIQUEMENT celles où le prof
+  // enseigne cette matière (sinon, matière générale → ses classes affectées)
+  const classOptions = (() => {
+    if (!isTeacher) return classes;
+    if (!selectedSubjectName) return [];
+    const entries = subjects.filter(s => s.name === selectedSubjectName);
+    const withClass = entries.filter(s => s.classe);
+    if (withClass.length) {
+      const map = {};
+      withClass.forEach(s => { map[s.classe] = { id: s.classe, name: s.classe_name }; });
+      return Object.values(map);
+    }
+    return assignedClasses; // matière sans classe → toutes les classes affectées
+  })();
+
+  // Id réel de la matière (résolu depuis nom + classe pour le prof)
+  const effectiveSubjectId = (() => {
+    if (!isTeacher) return selectedSubject;
+    if (!selectedSubjectName) return '';
+    let e = subjects.find(s => s.name === selectedSubjectName && String(s.classe) === String(selectedClasse));
+    if (!e) e = subjects.find(s => s.name === selectedSubjectName && !s.classe);
+    return e ? e.id : '';
+  })();
+
   const fetchData = useCallback(async () => {
-    if (!selectedSubject || !selectedClasse) return;
+    if (!effectiveSubjectId || !selectedClasse) return;
     setLoading(true);
     try {
       const [studRes, gradeRes] = await Promise.all([
         api.get(`/students/by_class/?classe_id=${selectedClasse}`),
-        api.get(`/grades/by_subject_class/?subject_id=${selectedSubject}&classe_id=${selectedClasse}`),
+        api.get(`/grades/by_subject_class/?subject_id=${effectiveSubjectId}&classe_id=${selectedClasse}`),
       ]);
       setStudents(studRes.data.results || studRes.data);
       setGrades(gradeRes.data.results || gradeRes.data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
-  }, [selectedSubject, selectedClasse]);
+  }, [effectiveSubjectId, selectedClasse]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -71,8 +109,8 @@ function GradesManagement() {
   const handleAddGrade = (studentId) => {
     setEditingGrade(null);
     setGradeForm({
-      student: studentId, subject: selectedSubject,
-      value: '', max_value: '20', type_evaluation: 'DEVOIR', comment: ''
+      student: studentId, subject: effectiveSubjectId,
+      value: '', max_value: '20', type_evaluation: 'Devoir', comment: ''
     });
     setShowModal(true);
   };
@@ -111,7 +149,8 @@ function GradesManagement() {
   const handleSubjectChange = (subjectId) => {
     setSelectedSubject(subjectId);
     const subj = subjects.find(s => s.id === parseInt(subjectId));
-    if (subj) setSelectedClasse(String(subj.classe));
+    // Auto-sélection de la classe seulement si la matière est rattachée à une classe
+    if (subj && subj.classe) setSelectedClasse(String(subj.classe));
   };
 
   return (
@@ -124,35 +163,61 @@ function GradesManagement() {
       </div>
 
       <div className="filters-bar">
-        <select className="form-control" style={{ width: 240 }}
-          value={selectedSubject} onChange={e => handleSubjectChange(e.target.value)}>
-          <option value="">Choisir une matière</option>
-          {subjects.map(s => (
-            <option key={s.id} value={s.id}>{s.name} ({s.classe_name})</option>
-          ))}
-        </select>
-        {!isTeacher && (
-          <select className="form-control" style={{ width: 200 }}
-            value={selectedClasse} onChange={e => setSelectedClasse(e.target.value)}>
-            <option value="">Choisir une classe</option>
-            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        {isTeacher ? (
+          <select className="form-control" style={{ width: 240 }}
+            value={selectedSubjectName}
+            onChange={e => { setSelectedSubjectName(e.target.value); setSelectedClasse(''); }}>
+            <option value="">Choisir une matière</option>
+            {subjectNames.map(name => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+        ) : (
+          <select className="form-control" style={{ width: 240 }}
+            value={selectedSubject} onChange={e => handleSubjectChange(e.target.value)}>
+            <option value="">Choisir une matière</option>
+            {subjects.map(s => (
+              <option key={s.id} value={s.id}>{s.name} ({s.classe_name})</option>
+            ))}
           </select>
         )}
+        <select className="form-control" style={{ width: 200 }}
+          value={selectedClasse} onChange={e => setSelectedClasse(e.target.value)}
+          disabled={isTeacher && !selectedSubjectName}>
+          <option value="">
+            {isTeacher && !selectedSubjectName ? 'Choisir d\'abord la matière' : 'Choisir une classe'}
+          </option>
+          {classOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
       </div>
 
-      {(!selectedSubject || !selectedClasse) ? (
+      {(!effectiveSubjectId || !selectedClasse) ? (
         <div className="card">
           <div className="card-body" style={{ textAlign: 'center', padding: 60, color: '#98a2b3' }}>
             <FiPlus size={48} style={{ marginBottom: 16, opacity: 0.3 }} />
-            <p>Sélectionnez une matière pour commencer la saisie des notes</p>
+            <p>Sélectionnez une matière puis une classe pour commencer la saisie des notes</p>
           </div>
         </div>
       ) : loading ? (
         <div className="loading-container"><div className="spinner" /></div>
       ) : (
         <div className="card">
-          <div className="card-header">
+          <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h3>Élèves — {students.length} inscrits</h3>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-sm btn-secondary"
+                onClick={() => downloadFile(
+                  `/reports/subject-sheet/?subject_id=${effectiveSubjectId}&classe_id=${selectedClasse}&order=merit`,
+                  'feuille_notes_merite.pdf')}>
+                <FiDownload size={14} /> PDF mérite
+              </button>
+              <button className="btn btn-sm btn-secondary"
+                onClick={() => downloadFile(
+                  `/reports/subject-sheet/?subject_id=${effectiveSubjectId}&classe_id=${selectedClasse}&order=alpha`,
+                  'feuille_notes_alphabetique.pdf')}>
+                <FiDownload size={14} /> PDF alphabétique
+              </button>
+            </div>
           </div>
           <div className="table-container">
             <table>
@@ -248,14 +313,18 @@ function GradesManagement() {
                 </div>
                 <div className="form-group">
                   <label>Type d'évaluation</label>
-                  <select className="form-control" value={gradeForm.type_evaluation}
-                    onChange={e => setGradeForm({...gradeForm, type_evaluation: e.target.value})}>
-                    <option value="DEVOIR">Devoir</option>
-                    <option value="EXAMEN">Examen</option>
-                    <option value="ORAL">Oral</option>
-                    <option value="TP">Travaux Pratiques</option>
-                    <option value="COMPOSITION">Composition</option>
-                  </select>
+                  <input className="form-control" list="eval-types"
+                    placeholder="Ex : Devoir, Interrogation, Composition..."
+                    value={gradeForm.type_evaluation}
+                    onChange={e => setGradeForm({...gradeForm, type_evaluation: e.target.value})} />
+                  <datalist id="eval-types">
+                    <option value="Devoir" />
+                    <option value="Interrogation" />
+                    <option value="Examen" />
+                    <option value="Oral" />
+                    <option value="Travaux Pratiques" />
+                    <option value="Composition" />
+                  </datalist>
                 </div>
                 <div className="form-group">
                   <label>Commentaire (optionnel)</label>

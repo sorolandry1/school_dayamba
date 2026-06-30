@@ -15,7 +15,7 @@ class CanEditGrades(BasePermission):
         if not u.is_authenticated:
             return False
         if request.method in SAFE_METHODS:
-            return u.role in ['ADMIN', 'DIRECTOR', 'TEACHER']
+            return u.role in ['ADMIN', 'DIRECTOR', 'TEACHER', 'EDUCATEUR']
         return u.role in ['TEACHER', 'ADMIN']
 
 
@@ -45,6 +45,26 @@ class IsClasseStaff(BasePermission):
         if request.method in SAFE_METHODS:
             return True
         return request.user.role in ['ADMIN', 'DIRECTOR', 'EDUCATEUR']
+
+
+class IsStudentStaff(BasePermission):
+    """Élèves : lecture pour tout utilisateur authentifié ; création/modification
+    pour ADMIN, DIRECTOR et ÉDUCATEUR (inscription, import…)."""
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        if request.method in SAFE_METHODS:
+            return True
+        return request.user.role in ['ADMIN', 'DIRECTOR', 'EDUCATEUR']
+
+
+class CanViewReports(BasePermission):
+    """Lecture des documents (bulletins, listes de classe…) : ADMIN, DIRECTOR,
+    TEACHER et ÉDUCATEUR."""
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role in [
+            'ADMIN', 'DIRECTOR', 'TEACHER', 'EDUCATEUR'
+        ]
 
 
 class IsDirector(BasePermission):

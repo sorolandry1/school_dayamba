@@ -3,7 +3,8 @@ from .views import (
     BulletinPDFView, BulletinClassePDFView, DashboardStatsView,
     AttendanceReportView, PaymentReportView, ExcelExportView,
     ClassStatsView, DocumentTemplateListCreateView, DocumentTemplateDetailView,
-    ReceiptPDFView, StudentCardPDFView,
+    ReceiptPDFView, StudentCardPDFView, PlatformSettingsView, ClassListPDFView,
+    SubjectSheetPDFView,
 )
 
 urlpatterns = [
@@ -14,6 +15,9 @@ urlpatterns = [
     path('payments/', PaymentReportView.as_view(), name='payment_report'),
     path('export/', ExcelExportView.as_view(), name='excel_export'),
     path('class_stats/', ClassStatsView.as_view(), name='class_stats'),
+    path('platform-settings/', PlatformSettingsView.as_view(), name='platform_settings'),
+    path('class-list/<int:classe_id>/', ClassListPDFView.as_view(), name='class_list_pdf'),
+    path('subject-sheet/', SubjectSheetPDFView.as_view(), name='subject_sheet_pdf'),
     # Template management
     path('templates/', DocumentTemplateListCreateView.as_view(), name='template_list'),
     path('templates/<int:pk>/', DocumentTemplateDetailView.as_view(), name='template_detail'),

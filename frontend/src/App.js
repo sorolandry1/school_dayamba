@@ -79,7 +79,6 @@ function AppRoutes() {
         <Route path="/grades" element={<GradesManagement />} />
         <Route path="/payments" element={<Payments />} />
         <Route path="/reports" element={<Reports />} />
-        <Route path="/bulletins" element={<Bulletins />} />
         <Route path="/users" element={<Users />} />
         <Route path="/subjects" element={<Subjects />} />
         <Route path="/logs" element={<ActivityLogs />} />
@@ -102,6 +101,7 @@ function AppRoutes() {
         <Route path="/students/:id" element={<StudentDetail />} />
         <Route path="/attendance" element={<AttendanceScanner />} />
         <Route path="/communications" element={<Communications />} />
+        <Route path="/bulletins" element={<Bulletins />} />
       </Route>
 
       {/* Teacher routes */}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../../services/api';
 import { useNavigate } from 'react-router-dom';
+import { downloadFile } from '../../utils/downloadPdf';
 import {
   FiPlus, FiSearch, FiEdit2, FiTrash2, FiEye, FiX,
   FiFileText, FiUpload, FiDownload, FiCheck, FiAlertCircle,
@@ -150,6 +151,17 @@ function Students() {
           )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="btn btn-secondary"
+            onClick={() => {
+              if (!filterClasse) { alert('Sélectionnez une classe (filtre ci-dessous) pour imprimer sa liste.'); return; }
+              const cls = classes.find(c => String(c.id) === String(filterClasse));
+              downloadFile(`/reports/class-list/${filterClasse}/?order=alpha`, `liste_${cls?.name || 'classe'}.pdf`);
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <FiFileText size={15} /> Imprimer la liste
+          </button>
           <button
             className="btn btn-secondary"
             onClick={() => setShowImport(true)}

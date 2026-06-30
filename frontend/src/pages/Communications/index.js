@@ -2,13 +2,6 @@ import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { FiSend, FiUsers, FiCheck, FiAlertCircle, FiMessageSquare, FiMail } from 'react-icons/fi';
 
-const TEMPLATES = [
-  { label: 'Convocation réunion', text: 'Chers parents, nous vous convions à une réunion de parents d\'élèves le [DATE] à [HEURE]. Votre présence est fortement souhaitée. Direction.' },
-  { label: 'Rappel paiement', text: 'Chers parents, nous vous rappelons que les frais de scolarité sont dus. Merci de régulariser votre situation auprès de l\'administration. Direction.' },
-  { label: 'Fermeture exceptionnelle', text: 'Chers parents, nous vous informons que l\'établissement sera fermé le [DATE] pour [RAISON]. Les cours reprendront le [DATE]. Direction.' },
-  { label: 'Résultats disponibles', text: 'Chers parents, les bulletins de notes sont disponibles. Vous pouvez les récupérer auprès de l\'administration. Direction.' },
-];
-
 function Communications() {
   const [classes, setClasses]             = useState([]);
   const [selectedClasse, setSelectedClasse] = useState('');
@@ -82,7 +75,7 @@ function Communications() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20 }}>
         {/* Main form */}
         <div>
           {/* Channel selector */}
@@ -206,44 +199,6 @@ function Communications() {
           </div>
         </div>
 
-        {/* Sidebar */}
-        <div>
-          <div className="card">
-            <div className="card-header">
-              <h3>Modèles de messages</h3>
-            </div>
-            <div className="card-body" style={{ padding: 0 }}>
-              {TEMPLATES.map((tpl, i) => (
-                <div
-                  key={i}
-                  style={{
-                    padding: '14px 16px',
-                    borderBottom: i < TEMPLATES.length - 1 ? '1px solid #f2f4f7' : 'none',
-                    cursor: 'pointer', transition: 'background 0.15s',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#f8faff'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  onClick={() => setMessage(tpl.text)}
-                >
-                  <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 4 }}>{tpl.label}</div>
-                  <div style={{ fontSize: '0.78rem', color: '#98a2b3', lineHeight: 1.4 }}>
-                    {tpl.text.slice(0, 80)}…
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="card" style={{ marginTop: 16 }}>
-            <div className="card-header"><h3>Conseils</h3></div>
-            <div className="card-body" style={{ fontSize: '0.82rem', color: '#667085', lineHeight: 1.6 }}>
-              <p>• Remplacez <strong>[DATE]</strong> et <strong>[HEURE]</strong> par les valeurs réelles.</p>
-              <p>• Un SMS = 160 caractères. Au-delà, il est découpé en plusieurs parties.</p>
-              <p>• Vérifiez que les contacts parents sont saisis dans les fiches élèves.</p>
-              <p>• SMS envoyés via Twilio · Emails via le serveur SMTP configuré.</p>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

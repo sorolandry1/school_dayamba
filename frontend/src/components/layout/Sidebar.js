@@ -197,6 +197,7 @@ function Sidebar({ isOpen, onClose }) {
     { to: '/students', icon: <FiUsers />, label: t('sidebar.links.students') },
     { to: '/classes', icon: <FiGrid />, label: t('sidebar.links.classes') },
     { to: '/teachers', icon: <FiBook />, label: t('sidebar.links.teachers') },
+    { to: '/bulletins', icon: <FiFileText />, label: t('sidebar.links.bulletins') },
     { to: '/communications', icon: <FiMessageSquare />, label: t('sidebar.links.communications') },
   ];
 

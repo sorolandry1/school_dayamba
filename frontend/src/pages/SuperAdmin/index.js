@@ -1,6 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import api from '../../services/api';
+
+// Convertit une data URL (base64) en Blob pour l'upload du logo
+function dataURLtoBlob(dataurl) {
+  try {
+    const comma = dataurl.indexOf(',');
+    const head = dataurl.slice(0, comma);
+    const body = dataurl.slice(comma + 1);
+    const mime = head.match(/:(.*?);/)[1];
+    const bin = atob(body);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  } catch { return null; }
+}
 import {
   FiSettings, FiSliders, FiFileText, FiToggleRight, FiToggleLeft,
   FiSave, FiUpload, FiRefreshCw, FiAlertCircle, FiCheckCircle,
@@ -400,14 +415,44 @@ function SuperAdmin() {
     );
   }
 
+  // Charge l'identité école persistée côté backend (prioritaire sur le local)
+  useEffect(() => {
+    api.get('/reports/platform-settings/').then(r => {
+      const d = r.data || {};
+      setSettings(prev => ({
+        ...prev,
+        schoolName: d.school_name || prev.schoolName,
+        schoolYear: d.school_year || prev.schoolYear,
+        schoolType: d.school_type || prev.schoolType,
+        logoUrl: d.logo_url || prev.logoUrl,
+        documents: { ...prev.documents, bulletinHeader: d.bulletin_header ?? prev.documents.bulletinHeader },
+      }));
+    }).catch(() => {});
+  }, []);
+
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast({ msg: '', type: 'success' }), 3000);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     saveSettings(settings);
-    showToast('Paramètres enregistrés avec succès.');
+    // Persiste l'identité école côté backend (pour les documents générés)
+    try {
+      const fd = new FormData();
+      fd.append('school_name', settings.schoolName || '');
+      fd.append('school_year', settings.schoolYear || '');
+      fd.append('school_type', settings.schoolType || 'all');
+      fd.append('bulletin_header', settings.documents?.bulletinHeader || '');
+      if (settings.logoUrl && settings.logoUrl.startsWith('data:')) {
+        const blob = dataURLtoBlob(settings.logoUrl);
+        if (blob) fd.append('logo', blob, 'logo.png');
+      }
+      await api.patch('/reports/platform-settings/', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      showToast('Paramètres enregistrés (appliqués aux documents).');
+    } catch {
+      showToast('Enregistré localement, mais échec côté serveur.', 'error');
+    }
   };
 
   const handleReset = () => {

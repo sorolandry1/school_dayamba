@@ -10,7 +10,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
-from apps.users.permissions import IsAdmin, IsAdminOrReadOnly
+from apps.users.permissions import IsAdmin, IsAdminOrReadOnly, IsStudentStaff
 from utils.qr_generator import generate_qr_for_student
 from .models import Student
 from .serializers import StudentListSerializer, StudentDetailSerializer, StudentCreateSerializer
@@ -44,7 +44,7 @@ HEADER_LABELS = [c[0] for c in IMPORT_COLUMNS]
 
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.select_related('classe', 'classe__level').all()
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsStudentStaff]
     parser_classes = [MultiPartParser, FormParser]
     filterset_fields = ['classe', 'payment_status', 'is_active', 'gender']
     search_fields = ['first_name', 'last_name', 'matricule', 'parent_phone']
@@ -155,7 +155,7 @@ class StudentViewSet(viewsets.ModelViewSet):
 
     # ── Import template ────────────────────────────────────────────────────────
 
-    @action(detail=False, methods=['get'], permission_classes=[IsAdmin])
+    @action(detail=False, methods=['get'], permission_classes=[IsStudentStaff])
     def import_template(self, request):
         """Download a styled .xlsx template ready to fill in."""
         wb = openpyxl.Workbook()
@@ -225,7 +225,7 @@ class StudentViewSet(viewsets.ModelViewSet):
 
     # ── Bulk import ────────────────────────────────────────────────────────────
 
-    @action(detail=False, methods=['post'], permission_classes=[IsAdmin],
+    @action(detail=False, methods=['post'], permission_classes=[IsStudentStaff],
             parser_classes=[MultiPartParser, FormParser])
     def import_students(self, request):
         """Import students from an Excel (.xlsx) or CSV file.

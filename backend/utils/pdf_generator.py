@@ -29,14 +29,28 @@ def _appreciation(avg):
     return 'Insuffisant'
 
 
+def _platform_settings():
+    """Réglages d'identité de l'établissement (singleton), ou None."""
+    try:
+        from apps.reports.models import PlatformSettings
+        return PlatformSettings.get_solo()
+    except Exception:
+        return None
+
+
 def build_token_context(student=None, rankings_data=None, payment=None, subjects=None):
     """Build a complete token → value map for a given document context."""
     ctx = {}
+    ps = _platform_settings()
 
     # ── Document ──
     doc_number = str(_uuid.uuid4())[:8].upper()
     ctx['{{NUMERO_DOC}}']      = doc_number
     ctx['{{DATE_EMISSION}}']   = _date.today().strftime('%d/%m/%Y')
+    # Identité établissement (depuis le Super-Admin)
+    ctx['{{NOM_ETABLISSEMENT}}'] = (ps.school_name if ps else '') or ''
+    if ps and ps.school_year:
+        ctx['{{ANNEE_SCOLAIRE}}'] = ps.school_year
 
     if student:
         # ── Élève ──
@@ -49,10 +63,11 @@ def build_token_context(student=None, rankings_data=None, payment=None, subjects
         ctx['{{LIEU_NAISSANCE}}']  = student.birth_place or ''
 
         # ── Établissement ──
-        ctx['{{NOM_ETABLISSEMENT}}'] = ''  # filled from template config at render time
         if student.classe:
             yr = student.classe.academic_year
-            ctx['{{ANNEE_SCOLAIRE}}']  = yr.name if yr else ''
+            # On garde l'année du Super-Admin si définie, sinon celle de la classe
+            if not ctx.get('{{ANNEE_SCOLAIRE}}'):
+                ctx['{{ANNEE_SCOLAIRE}}'] = yr.name if yr else ''
             ctx['{{TRIMESTRE}}']       = '1er Trimestre'
 
             from apps.students.models import Student as _S
@@ -128,10 +143,32 @@ def generate_bulletin_pdf(student, subjects, rankings_data):
 
     elements = []
 
+    # Identité établissement (Super-Admin)
+    ps = _platform_settings()
+    if ps and getattr(ps, 'logo', None):
+        try:
+            from reportlab.platypus import Image as _RLImage
+            elements.append(_RLImage(ps.logo.path, width=2.4 * cm, height=2.4 * cm))
+            elements.append(Spacer(1, 4))
+        except Exception:
+            pass
+    if ps and ps.school_name:
+        elements.append(Paragraph(ps.school_name, title_style))
+    if ps and ps.bulletin_header:
+        elements.append(Paragraph(
+            ps.bulletin_header.replace('\n', '<br/>'),
+            ParagraphStyle('BH2', parent=styles['Normal'], fontSize=9,
+                           alignment=TA_CENTER, textColor=colors.HexColor('#4a5568'), spaceAfter=4),
+        ))
+
     # Header
     elements.append(Paragraph("BULLETIN DE NOTES", title_style))
-    if student.classe:
+    year_name = ''
+    if ps and ps.school_year:
+        year_name = ps.school_year
+    elif student.classe:
         year_name = student.classe.academic_year.name if student.classe.academic_year else ''
+    if year_name:
         elements.append(Paragraph(f"Année scolaire {year_name}", subtitle_style))
 
     elements.append(Spacer(1, 8))
@@ -329,6 +366,22 @@ def generate_bulletin_pdf_templated(student, subjects, rankings_data, template_c
     )
 
     elements = []
+
+    # ── Logo + en-tête personnalisé (Super-Admin) ──
+    ps = _platform_settings()
+    if ps and getattr(ps, 'logo', None):
+        try:
+            from reportlab.platypus import Image as _RLImage
+            elements.append(_RLImage(ps.logo.path, width=2.6 * cm, height=2.6 * cm))
+            elements.append(Spacer(1, 4))
+        except Exception:
+            pass
+    if ps and ps.bulletin_header:
+        elements.append(Paragraph(
+            ps.bulletin_header.replace('\n', '<br/>'),
+            ParagraphStyle('BH', parent=styles['Normal'], fontSize=9,
+                           alignment=TA_CENTER, textColor=colors.HexColor('#344054'), spaceAfter=6),
+        ))
 
     # ── Header band ──
     school_name_para = Paragraph(school_name, title_style)
@@ -578,6 +631,180 @@ def generate_bulletin_pdf_templated(student, subjects, rankings_data, template_c
             ParagraphStyle('Foot', parent=styles['Normal'],
                            fontSize=7, textColor=colors.HexColor('#667085'), alignment=TA_CENTER),
         ))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
+def generate_class_list_pdf(classe, subjects, rows, order='merit'):
+    """Génère le relevé d'une classe en PDF (A4 paysage).
+
+    `subjects` : liste de dicts {'name', 'coefficient'}.
+    `rows`     : liste de dicts {'name', 'averages': [par matière|None], 'total', 'average'} déjà triés.
+    `order`    : 'merit' (avec rang) ou 'alpha'.
+    """
+    from reportlab.lib.pagesizes import landscape
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=landscape(A4),
+        rightMargin=1.2 * cm, leftMargin=1.2 * cm,
+        topMargin=1.2 * cm, bottomMargin=1.2 * cm,
+    )
+    styles = getSampleStyleSheet()
+    elements = []
+    ps = _platform_settings()
+
+    # ── En-tête établissement ──
+    school_name = (ps.school_name if ps else '') or ''
+    if school_name:
+        elements.append(Paragraph(school_name, ParagraphStyle(
+            'CLS', parent=styles['Title'], fontSize=14,
+            textColor=colors.HexColor('#1a365d'), alignment=TA_CENTER, spaceAfter=2)))
+
+    year_name = (ps.school_year if ps and ps.school_year else
+                 (classe.academic_year.name if classe.academic_year else ''))
+    elements.append(Paragraph(f"RELEVÉ DE NOTES — CLASSE {classe.name}", ParagraphStyle(
+        'CLT', parent=styles['Normal'], fontSize=13, fontName='Helvetica-Bold',
+        alignment=TA_CENTER, spaceAfter=2, textColor=colors.HexColor('#2d3748'))))
+    sub = ("Par ordre de mérite" if order == 'merit' else "Par ordre alphabétique")
+    if year_name:
+        sub += f"  ·  Année scolaire {year_name}"
+    sub += f"  ·  {len(rows)} élève(s)"
+    elements.append(Paragraph(sub, ParagraphStyle(
+        'CLSub', parent=styles['Normal'], fontSize=9, alignment=TA_CENTER,
+        textColor=colors.HexColor('#667085'), spaceAfter=10)))
+
+    # ── En-têtes de colonnes ──
+    head_cell = ParagraphStyle('HC', parent=styles['Normal'], fontSize=7,
+                               textColor=colors.white, alignment=TA_CENTER, leading=8)
+    first_label = 'Rang' if order == 'merit' else 'N°'
+    header = [first_label, 'Nom & Prénom']
+    for subj in subjects:
+        coeff = subj.get('coefficient')
+        coeff_str = f"\n(coef {int(coeff) if float(coeff).is_integer() else coeff})" if coeff else ''
+        header.append(Paragraph((subj['name'] + coeff_str).replace('\n', '<br/>'), head_cell))
+    header.append('Total')
+    header.append('Moy.')
+
+    # ── Largeurs de colonnes (paysage ≈ 27 cm utiles) ──
+    n = max(1, len(subjects))
+    fixed = 1.2 + 5.0 + 2.0 + 2.0  # rang + nom + total + moy (cm)
+    subj_w = max(1.4, (27.0 - fixed) / n)
+    col_widths = ([1.2 * cm, 5.0 * cm] + [subj_w * cm] * n + [2.0 * cm, 2.0 * cm])
+
+    data = [header]
+    for i, r in enumerate(rows, start=1):
+        line = [str(i), r['name']]
+        for a in r.get('averages', []):
+            line.append(f"{a}" if a is not None else '—')
+        line.append(f"{r.get('total', 0)}")
+        avg = r.get('average')
+        line.append(f"{avg}" if avg is not None else '—')
+        data.append(line)
+
+    tbl = Table(data, colWidths=col_widths, repeatRows=1)
+    style = [
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2b6cb0')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 7),
+        ('FONTSIZE', (0, 1), (-1, -1), 7.5),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#cbd5e0')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f7fafc')]),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        # Colonnes Total + Moyenne mises en avant
+        ('FONTNAME', (-2, 1), (-1, -1), 'Helvetica-Bold'),
+        ('TEXTCOLOR', (-1, 1), (-1, -1), colors.HexColor('#2b6cb0')),
+    ]
+    tbl.setStyle(TableStyle(style))
+    elements.append(tbl)
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
+def generate_subject_sheet_pdf(classe, subject, rows, order='merit'):
+    """Feuille de notes imprimable pour le professeur : Rang, Nom & Prénom, Notes
+    saisies (détail), Total, Moyenne — pour une matière et une classe données.
+
+    `rows`  : liste de dicts {'name', 'grades', 'average', 'total_value', 'total_max', 'rank'} déjà triés.
+    `order` : 'merit' ou 'alpha'.
+    """
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        rightMargin=1.5 * cm, leftMargin=1.5 * cm,
+        topMargin=1.5 * cm, bottomMargin=1.5 * cm,
+    )
+    styles = getSampleStyleSheet()
+    elements = []
+    ps = _platform_settings()
+
+    school_name = (ps.school_name if ps else '') or ''
+    if school_name:
+        elements.append(Paragraph(school_name, ParagraphStyle(
+            'SS', parent=styles['Title'], fontSize=14,
+            textColor=colors.HexColor('#1a365d'), alignment=TA_CENTER, spaceAfter=2)))
+
+    year_name = (ps.school_year if ps and ps.school_year else
+                 (classe.academic_year.name if classe and classe.academic_year else ''))
+    elements.append(Paragraph(
+        f"FEUILLE DE NOTES — {subject.name} — Classe {classe.name if classe else ''}",
+        ParagraphStyle('SST', parent=styles['Normal'], fontSize=12, fontName='Helvetica-Bold',
+                       alignment=TA_CENTER, spaceAfter=2, textColor=colors.HexColor('#2d3748'))))
+    sub = ("Par ordre de mérite" if order == 'merit' else "Par ordre alphabétique") + f"  ·  {len(rows)} élève(s)"
+    if year_name:
+        sub = f"Année scolaire {year_name}  ·  " + sub
+    elements.append(Paragraph(sub, ParagraphStyle(
+        'SSs', parent=styles['Normal'], fontSize=9, alignment=TA_CENTER,
+        textColor=colors.HexColor('#667085'), spaceAfter=12)))
+
+    cell = ParagraphStyle('SSC', parent=styles['Normal'], fontSize=8.5, leading=11)
+    header = ['Rang', 'Nom & Prénom', 'Notes saisies', 'Total', 'Moyenne']
+    data = [header]
+    for r in rows:
+        notes = r.get('grades', [])
+        if notes:
+            notes_str = ', '.join(
+                f"{g['value']:g}/{g['max']:g}" + (f" ({g['type']})" if g.get('type') else '')
+                for g in notes
+            )
+        else:
+            notes_str = '—'
+        tv, tm = r.get('total_value'), r.get('total_max')
+        total_str = f"{tv:g}/{tm:g}" if tv is not None else '—'
+        avg = r.get('average')
+        avg_str = f"{avg}/20" if avg is not None else '—'
+        rank = r.get('rank')
+        rank_str = str(rank) if rank is not None else '—'
+        data.append([rank_str, Paragraph(r['name'], cell), Paragraph(notes_str, cell), total_str, avg_str])
+
+    tbl = Table(data, colWidths=[1.2 * cm, 6.0 * cm, 6.3 * cm, 2.3 * cm, 2.2 * cm], repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2b6cb0')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ('ALIGN', (3, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e0')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f7fafc')]),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('FONTNAME', (3, 1), (-1, -1), 'Helvetica-Bold'),
+        ('TEXTCOLOR', (-1, 1), (-1, -1), colors.HexColor('#2b6cb0')),
+    ]))
+    elements.append(tbl)
 
     doc.build(elements)
     buffer.seek(0)

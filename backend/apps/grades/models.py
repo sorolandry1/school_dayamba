@@ -2,13 +2,6 @@ from django.db import models
 
 
 class Grade(models.Model):
-    class EvaluationType(models.TextChoices):
-        DEVOIR = 'DEVOIR', 'Devoir'
-        EXAMEN = 'EXAMEN', 'Examen'
-        ORAL = 'ORAL', 'Oral'
-        TP = 'TP', 'Travaux Pratiques'
-        COMPOSITION = 'COMPOSITION', 'Composition'
-
     student = models.ForeignKey(
         'students.Student', on_delete=models.CASCADE, related_name='grades'
     )
@@ -17,9 +10,8 @@ class Grade(models.Model):
     )
     value = models.DecimalField(max_digits=5, decimal_places=2)
     max_value = models.DecimalField(max_digits=5, decimal_places=2, default=20.00)
-    type_evaluation = models.CharField(
-        max_length=20, choices=EvaluationType.choices, default=EvaluationType.DEVOIR
-    )
+    # Type d'évaluation libre (saisi par le professeur) — ex. « Devoir », « Interrogation »…
+    type_evaluation = models.CharField(max_length=50, default='Devoir')
     comment = models.TextField(blank=True, default='')
     date = models.DateField(auto_now_add=True)
     created_by = models.ForeignKey(

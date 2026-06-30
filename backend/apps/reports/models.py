@@ -55,3 +55,29 @@ class DocumentTemplate(models.Model):
                 is_default=True,
             ).exclude(pk=self.pk).update(is_default=False)
         super().save(*args, **kwargs)
+
+
+class PlatformSettings(models.Model):
+    """Réglages d'identité de l'établissement (singleton), définis dans le
+    panneau Super-Administrateur et appliqués aux documents générés (bulletins…)."""
+    school_name = models.CharField(max_length=200, blank=True, default='')
+    school_year = models.CharField(max_length=20, blank=True, default='')
+    school_type = models.CharField(max_length=20, blank=True, default='all')
+    bulletin_header = models.TextField(blank=True, default='')
+    logo = models.ImageField(upload_to='platform/', blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'platform_settings'
+        verbose_name = 'Réglages plateforme'
+        verbose_name_plural = 'Réglages plateforme'
+
+    def __str__(self):
+        return self.school_name or 'Réglages plateforme'
+
+    @classmethod
+    def get_solo(cls):
+        obj = cls.objects.first()
+        if obj is None:
+            obj = cls.objects.create()
+        return obj

@@ -1,5 +1,22 @@
 from rest_framework import serializers
-from .models import DocumentTemplate
+from .models import DocumentTemplate, PlatformSettings
+
+
+class PlatformSettingsSerializer(serializers.ModelSerializer):
+    logo_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PlatformSettings
+        fields = ['id', 'school_name', 'school_year', 'school_type',
+                  'bulletin_header', 'logo', 'logo_url', 'updated_at']
+        read_only_fields = ['id', 'updated_at']
+        extra_kwargs = {'logo': {'write_only': True, 'required': False}}
+
+    def get_logo_url(self, obj):
+        if obj.logo:
+            request = self.context.get('request')
+            return request.build_absolute_uri(obj.logo.url) if request else obj.logo.url
+        return None
 
 
 class ReportRequestSerializer(serializers.Serializer):
