@@ -51,6 +51,13 @@ class ActivityLog(models.Model):
     action = models.CharField(max_length=30, choices=Action.choices)
     description = models.TextField()
     ip_address = models.GenericIPAddressField(null=True, blank=True)
+    # Traçabilité enrichie
+    old_value = models.TextField(blank=True, default='')
+    new_value = models.TextField(blank=True, default='')
+    user_agent = models.TextField(blank=True, default='')
+    browser = models.CharField(max_length=50, blank=True, default='')
+    os = models.CharField(max_length=50, blank=True, default='')
+    location = models.CharField(max_length=120, blank=True, default='')
     timestamp = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -136,10 +143,72 @@ class PasswordResetToken(models.Model):
         return not self.is_used and not self.is_expired
 
 
-def log_activity(user, action, description, request=None):
-    """Helper to create an ActivityLog entry."""
+class Notification(models.Model):
+    """Événements affichés en temps réel (polling) : inscription, paiement, scan QR."""
+    class Type(models.TextChoices):
+        STUDENT = 'STUDENT', 'Nouvel élève'
+        PAYMENT = 'PAYMENT', 'Paiement'
+        SCAN = 'SCAN', 'Présence (QR)'
+        OTHER = 'OTHER', 'Autre'
+
+    type = models.CharField(max_length=20, choices=Type.choices, default=Type.OTHER)
+    message = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'notifications'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"[{self.type}] {self.message}"
+
+
+def notify(ntype, message):
+    """Crée une notification (silencieux en cas d'erreur)."""
+    try:
+        Notification.objects.create(type=ntype, message=message[:255])
+    except Exception:
+        pass
+
+
+def _parse_user_agent(ua):
+    """Déduit (navigateur, système d'exploitation) d'un User-Agent, sans dépendance."""
+    u = (ua or '').lower()
+    if 'edg' in u:           browser = 'Edge'
+    elif 'opr' in u or 'opera' in u: browser = 'Opera'
+    elif 'chrome' in u:      browser = 'Chrome'
+    elif 'firefox' in u:     browser = 'Firefox'
+    elif 'safari' in u:      browser = 'Safari'
+    else:                    browser = 'Autre'
+    if 'windows' in u:       os_ = 'Windows'
+    elif 'android' in u:     os_ = 'Android'
+    elif 'iphone' in u or 'ipad' in u or 'ios' in u: os_ = 'iOS'
+    elif 'mac os' in u or 'macintosh' in u: os_ = 'macOS'
+    elif 'linux' in u:       os_ = 'Linux'
+    else:                    os_ = 'Autre'
+    return browser, os_
+
+
+def log_activity(user, action, description, request=None, old_value=None, new_value=None):
+    """Crée une entrée de journal en conservant navigateur, OS, IP, localisation
+    approximative, et l'ancienne/nouvelle valeur le cas échéant."""
     ip = None
+    ua = ''
+    location = ''
+    browser = os_ = ''
     if request:
         x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
         ip = x_forwarded.split(',')[0].strip() if x_forwarded else request.META.get('REMOTE_ADDR')
-    ActivityLog.objects.create(user=user, action=action, description=description, ip_address=ip)
+        ua = request.META.get('HTTP_USER_AGENT', '')
+        browser, os_ = _parse_user_agent(ua)
+        # Localisation approximative via en-têtes de proxy/CDN si disponibles
+        country = (request.META.get('HTTP_CF_IPCOUNTRY')
+                   or request.META.get('HTTP_X_APPENGINE_COUNTRY') or '')
+        city = request.META.get('HTTP_CF_IPCITY', '')
+        location = ', '.join([p for p in (city, country) if p and p != 'XX'])
+    ActivityLog.objects.create(
+        user=user, action=action, description=description, ip_address=ip,
+        old_value='' if old_value is None else str(old_value),
+        new_value='' if new_value is None else str(new_value),
+        user_agent=ua, browser=browser, os=os_, location=location,
+    )

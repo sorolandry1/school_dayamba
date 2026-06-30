@@ -49,9 +49,10 @@ class GradeViewSet(viewsets.ModelViewSet):
             new_value=instance.value if change_type != 'DELETED' else old_value,
         )
 
-    def _log(self, action, desc):
+    def _log(self, action, desc, old_value=None, new_value=None):
         from apps.users.models import log_activity
-        log_activity(self.request.user, action, desc, self.request)
+        log_activity(self.request.user, action, desc, self.request,
+                     old_value=old_value, new_value=new_value)
 
     def perform_create(self, serializer):
         subject_id = serializer.validated_data['subject'].id
@@ -68,7 +69,8 @@ class GradeViewSet(viewsets.ModelViewSet):
         serializer.save()
         g = serializer.instance
         self._record_history(g, 'UPDATED', old_value)
-        self._log('GRADE_EDIT', f"Note {old_value}→{g.value} — {g.student} — {g.subject.name}")
+        self._log('GRADE_EDIT', f"Note modifiée — {g.student} — {g.subject.name}",
+                  old_value=f"{old_value}/{g.max_value}", new_value=f"{g.value}/{g.max_value}")
 
     def perform_destroy(self, instance):
         self._check_teacher_owns_subject(instance.subject_id)

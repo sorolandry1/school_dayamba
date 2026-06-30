@@ -12,8 +12,11 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from apps.users.permissions import IsAdmin, IsAdminOrReadOnly, IsStudentStaff
 from utils.qr_generator import generate_qr_for_student
-from .models import Student
-from .serializers import StudentListSerializer, StudentDetailSerializer, StudentCreateSerializer
+from .models import Student, StudentDocument
+from .serializers import (
+    StudentListSerializer, StudentDetailSerializer, StudentCreateSerializer,
+    StudentDocumentSerializer,
+)
 
 
 def active_student_count() -> int:
@@ -67,6 +70,9 @@ class StudentViewSet(viewsets.ModelViewSet):
             })
         student = serializer.save()
         generate_qr_for_student(student)
+        from apps.users.models import notify
+        notify('STUDENT', f"Nouvel élève inscrit : {student.full_name}"
+               + (f" ({student.classe.name})" if student.classe else ""))
 
     @action(detail=True, methods=['post'])
     def generate_qr(self, request, pk=None):
@@ -492,3 +498,17 @@ def _parse_file(file, ext: str) -> list[dict]:
         result.append({k.strip().lower(): v.strip() for k, v in row.items()})
     return result
 
+
+
+class StudentDocumentViewSet(viewsets.ModelViewSet):
+    """Espace documentaire des élèves (certificat, acte de naissance, photo,
+    diplôme, bulletin signé…). Lecture pour le personnel ; gestion par
+    ADMIN/DIRECTOR/ÉDUCATEUR."""
+    queryset = StudentDocument.objects.select_related('student', 'uploaded_by').all()
+    serializer_class = StudentDocumentSerializer
+    permission_classes = [IsStudentStaff]
+    parser_classes = [MultiPartParser, FormParser]
+    filterset_fields = ['student', 'category']
+
+    def perform_create(self, serializer):
+        serializer.save(uploaded_by=self.request.user)

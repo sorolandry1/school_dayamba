@@ -222,6 +222,72 @@ class DashboardStatsView(APIView):
         return Response(result)
 
 
+class ChartsView(APIView):
+    """Séries pour les graphiques : évolution paiements, finances, absentéisme, réussite."""
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        from django.db.models.functions import TruncMonth
+        from django.db.models import Sum, Count, Q, Avg
+        from apps.payments.models import Expense
+        from apps.classes.models import Classe
+
+        def fmt(d):
+            return d.strftime('%m/%Y') if d else '—'
+
+        # Paiements encaissés par mois
+        pay = (Payment.objects.filter(status='PAID')
+               .annotate(m=TruncMonth('payment_date')).values('m')
+               .annotate(total=Sum('amount')).order_by('m'))
+        payments_evolution = [{'period': fmt(r['m']), 'montant': float(r['total'] or 0)} for r in pay]
+
+        # Finances : recettes vs dépenses par mois
+        exp = (Expense.objects.annotate(m=TruncMonth('date')).values('m')
+               .annotate(total=Sum('amount')).order_by('m'))
+        months = {}
+        for r in pay:
+            months.setdefault(r['m'], {'recettes': 0.0, 'depenses': 0.0})['recettes'] = float(r['total'] or 0)
+        for r in exp:
+            months.setdefault(r['m'], {'recettes': 0.0, 'depenses': 0.0})['depenses'] = float(r['total'] or 0)
+        finance = [
+            {'period': fmt(m), 'recettes': v['recettes'], 'depenses': v['depenses'],
+             'solde': v['recettes'] - v['depenses']}
+            for m, v in sorted(months.items(), key=lambda x: (x[0] is None, x[0]))
+        ]
+
+        # Absentéisme par mois
+        att = (Attendance.objects.annotate(m=TruncMonth('date')).values('m')
+               .annotate(total=Count('id'),
+                         absent=Count('id', filter=Q(status='ABSENT')),
+                         late=Count('id', filter=Q(status='LATE'))).order_by('m'))
+        absenteeism = [
+            {'period': fmt(r['m']),
+             'taux_absence': round(r['absent'] / r['total'] * 100, 1) if r['total'] else 0,
+             'taux_retard': round(r['late'] / r['total'] * 100, 1) if r['total'] else 0}
+            for r in att
+        ]
+
+        # Réussite par classe (moyenne par élève → moyenne de classe + taux ≥ 10)
+        success = []
+        for c in Classe.objects.select_related('level').all():
+            ps = list(Grade.objects.filter(student__classe=c).values('student').annotate(avg=Avg('value')))
+            if not ps:
+                continue
+            passed = sum(1 for x in ps if (x['avg'] or 0) >= 10)
+            success.append({
+                'classe': c.name,
+                'moyenne': round(sum(float(x['avg'] or 0) for x in ps) / len(ps), 2),
+                'taux_reussite': round(passed / len(ps) * 100, 1),
+            })
+
+        return Response({
+            'payments_evolution': payments_evolution,
+            'finance': finance,
+            'absenteeism': absenteeism,
+            'success': success,
+        })
+
+
 class AttendanceReportView(APIView):
     """Absence report per class with optional date range."""
     permission_classes = [IsAdmin]

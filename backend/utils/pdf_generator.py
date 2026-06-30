@@ -101,6 +101,14 @@ def build_token_context(student=None, rankings_data=None, payment=None, subjects
             ctx['{{NOM_PRENOM}}']   = payment.student.full_name
             ctx['{{MATRICULE}}']    = payment.student.matricule
             ctx['{{CLASSE}}']       = payment.student.classe.name if payment.student.classe else ''
+            # Solde : scolarité totale, total payé, reste à payer
+            from django.db.models import Sum as _Sum
+            _st = payment.student
+            _tuition = float(_st.classe.tuition_fee or 0) if _st.classe else 0
+            _paid = float(_st.payments.filter(status='PAID').aggregate(t=_Sum('amount'))['t'] or 0)
+            ctx['{{SCOLARITE_TOTALE}}'] = f'{_tuition:,.0f}'
+            ctx['{{TOTAL_PAYE}}']       = f'{_paid:,.0f}'
+            ctx['{{RESTE_A_PAYER}}']    = f'{max(0.0, _tuition - _paid):,.0f}'
 
     return ctx
 
@@ -915,6 +923,34 @@ def generate_receipt_pdf_templated(payment, template_config):
             ('LEFTPADDING', (0, 0), (-1, -1), 10),
         ]))
         elements.append(detail_tbl)
+        elements.append(Spacer(1, 20))
+
+    # ── Solde : scolarité totale, payé, reste à payer ──
+    if body_cfg.get('showBalance', True) and payment.student and payment.student.classe:
+        from django.db.models import Sum as _Sum
+        student = payment.student
+        tuition = float(student.classe.tuition_fee or 0)
+        total_paid = float(student.payments.filter(status='PAID').aggregate(t=_Sum('amount'))['t'] or 0)
+        reste = max(0.0, tuition - total_paid)
+        bal_rows = [
+            ['Scolarité totale :', f'{tuition:,.0f} {currency}'],
+            ['Total payé :', f'{total_paid:,.0f} {currency}'],
+            ['Reste à payer :', f'{reste:,.0f} {currency}'],
+        ]
+        bal_tbl = Table(bal_rows, colWidths=[5 * cm, 12 * cm])
+        bal_tbl.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor(border_color)),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(accent)),
+            # Reste à payer en évidence
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('TEXTCOLOR', (1, -1), (1, -1), colors.HexColor('#c53030')),
+        ]))
+        elements.append(bal_tbl)
         elements.append(Spacer(1, 20))
 
     # ── Amount box ──

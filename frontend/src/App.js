@@ -33,6 +33,8 @@ import SuperAdmin from './pages/SuperAdmin';
 import DocumentEditor from './pages/DocumentEditor';
 import EducatorDashboard from './pages/EducatorDashboard';
 import CaisseDashboard from './pages/CaisseDashboard';
+import Analytics from './pages/Analytics';
+import AcademicYears from './pages/AcademicYears';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, isAuthenticated } = useAuth();
@@ -84,6 +86,8 @@ function AppRoutes() {
         <Route path="/users" element={<Users />} />
         <Route path="/subjects" element={<Subjects />} />
         <Route path="/logs" element={<ActivityLogs />} />
+        <Route path="/analytics" element={<Analytics />} />
+        <Route path="/academic-years" element={<AcademicYears />} />
         <Route path="/student-cards" element={<StudentCards />} />
         <Route path="/super-admin" element={<SuperAdmin />} />
         <Route path="/document-editor" element={<DocumentEditor />} />

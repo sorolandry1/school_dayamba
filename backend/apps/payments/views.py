@@ -42,6 +42,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         payment = serializer.save(recorded_by=self.request.user)
         self._notify_parent(payment)
+        from apps.users.models import notify
+        notify('PAYMENT', f"Paiement reçu : {int(payment.amount):,} FCFA — {payment.student.full_name}".replace(',', ' '))
 
     def perform_update(self, serializer):
         payment = serializer.save()

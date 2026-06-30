@@ -798,6 +798,15 @@ function ReceiptPreview({ config }) {
             ))}
           </div>
         )}
+        {body.showBalance !== false && (
+          <div style={{ border: `1px solid ${co.border || '#e2e8f0'}`, borderRadius: 6, padding: '10px 14px', marginBottom: 12 }}>
+            {[['Scolarité totale', `450 000 ${currency}`], ['Total payé', `300 000 ${currency}`], ['Reste à payer', `150 000 ${currency}`]].map(([l, v], i) => (
+              <div key={l} style={{ display: 'flex', gap: 8, fontSize: ty.bodySize || 10, marginBottom: 3, color: i === 2 ? '#c53030' : 'inherit', fontWeight: i === 2 ? 700 : 400 }}>
+                <span style={{ fontWeight: 700, minWidth: 110 }}>{l} :</span><span>{v}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <div style={{ textAlign: 'center', padding: '14px 0', fontSize: 26, fontWeight: 800, color: co.primary || '#1a365d' }}>150 000 {currency}</div>
         {sig.show !== false && (
           <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 36, fontSize: ty.bodySize || 9 }}>
@@ -1206,6 +1215,7 @@ function ReceiptSectionsPanel({ config, update }) {
       <S t="Corps du reçu">
         <Toggle checked={body.showStudentInfo !== false} onChange={v => setBody('showStudentInfo', v)} label="Infos élève" />
         <Toggle checked={body.showPaymentDetails !== false} onChange={v => setBody('showPaymentDetails', v)} label="Détails du paiement" />
+        <Toggle checked={body.showBalance !== false} onChange={v => setBody('showBalance', v)} label="Solde (total / payé / reste)" />
         <Field label="Devise" value={body.currency} onChange={v => setBody('currency', v)} placeholder="FCFA" />
         <TokenTextarea label="Texte libre (corps)" value={body.customText} onChange={v => setBody('customText', v)} placeholder="Ex: Reçu de {{NOM_PRENOM}} — Classe {{CLASSE}} — {{DATE_PAIEMENT}}" rows={2} />
       </S>

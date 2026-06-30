@@ -98,6 +98,8 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 )
 
             logger.info(f"Check-in: {student.full_name} à {current_time}")
+            from apps.users.models import notify
+            notify('SCAN', f"Entrée scannée : {student.full_name} à {current_time.strftime('%H:%M')}")
             return Response({
                 'message': f'{student.full_name} - Entrée enregistrée à {current_time.strftime("%H:%M")}',
                 'attendance': AttendanceSerializer(attendance).data,
@@ -147,6 +149,8 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 )
 
             logger.info(f"Check-out: {student.full_name} à {current_time}")
+            from apps.users.models import notify
+            notify('SCAN', f"Sortie scannée : {student.full_name} à {current_time.strftime('%H:%M')}")
             return Response({
                 'message': f'{student.full_name} - Sortie enregistrée à {current_time.strftime("%H:%M")}',
                 'attendance': AttendanceSerializer(attendance).data,

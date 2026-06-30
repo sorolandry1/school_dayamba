@@ -1,5 +1,27 @@
 from rest_framework import serializers
-from .models import Student
+from .models import Student, StudentDocument
+
+
+class StudentDocumentSerializer(serializers.ModelSerializer):
+    category_label = serializers.CharField(source='get_category_display', read_only=True)
+    file_url = serializers.SerializerMethodField()
+    uploaded_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = StudentDocument
+        fields = ['id', 'student', 'category', 'category_label', 'label',
+                  'file', 'file_url', 'uploaded_by_name', 'created_at']
+        read_only_fields = ['uploaded_by_name', 'created_at']
+        extra_kwargs = {'file': {'write_only': True}}
+
+    def get_file_url(self, obj):
+        if obj.file:
+            request = self.context.get('request')
+            return request.build_absolute_uri(obj.file.url) if request else obj.file.url
+        return None
+
+    def get_uploaded_by_name(self, obj):
+        return obj.uploaded_by.get_full_name() if obj.uploaded_by else None
 
 
 class StudentListSerializer(serializers.ModelSerializer):

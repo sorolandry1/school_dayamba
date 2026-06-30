@@ -4,8 +4,17 @@ import api from '../../services/api';
 import { downloadFile } from '../../utils/downloadPdf';
 import {
   FiArrowLeft, FiUser, FiBookOpen, FiCalendar, FiDollarSign, FiDownload,
-  FiCheckCircle, FiAlertCircle, FiClock, FiCamera, FiUpload,
+  FiCheckCircle, FiAlertCircle, FiClock, FiCamera, FiUpload, FiFileText, FiTrash2,
 } from 'react-icons/fi';
+
+const DOC_CATEGORIES = [
+  ['CERTIFICAT', 'Certificat'],
+  ['ACTE_NAISSANCE', 'Acte de naissance'],
+  ['PHOTO', 'Photo'],
+  ['DIPLOME', 'Diplôme'],
+  ['BULLETIN_SIGNE', 'Bulletin signé'],
+  ['AUTRE', 'Autre'],
+];
 
 function StudentDetail() {
   const { id } = useParams();
@@ -14,6 +23,11 @@ function StudentDetail() {
   const [loading, setLoading] = useState(true);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef(null);
+  // Espace documentaire
+  const [docs, setDocs] = useState([]);
+  const [docCat, setDocCat] = useState('CERTIFICAT');
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const docFileRef = useRef(null);
 
   const reload = () => {
     api.get(`/students/${id}/situation/`)
@@ -22,7 +36,36 @@ function StudentDetail() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { reload(); }, [id]); // eslint-disable-line
+  const loadDocs = () => {
+    api.get(`/students/documents/?student=${id}`)
+      .then(r => setDocs(r.data.results || r.data)).catch(() => {});
+  };
+
+  useEffect(() => { reload(); loadDocs(); }, [id]); // eslint-disable-line
+
+  const uploadDoc = async (file) => {
+    if (!file) return;
+    setUploadingDoc(true);
+    try {
+      const fd = new FormData();
+      fd.append('student', id);
+      fd.append('category', docCat);
+      fd.append('file', file);
+      await api.post('/students/documents/', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      loadDocs();
+    } catch (err) {
+      alert('Erreur: ' + JSON.stringify(err.response?.data));
+    } finally {
+      setUploadingDoc(false);
+      if (docFileRef.current) docFileRef.current.value = '';
+    }
+  };
+
+  const deleteDoc = async (docId) => {
+    if (!window.confirm('Supprimer ce document ?')) return;
+    try { await api.delete(`/students/documents/${docId}/`); loadDocs(); }
+    catch { alert('Suppression impossible.'); }
+  };
 
   const handlePhotoUpload = async (file) => {
     if (!file) return;
@@ -281,6 +324,61 @@ function StudentDetail() {
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Espace documentaire */}
+      <div className="card" style={{ marginTop: 20 }}>
+        <div className="card-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <FiFileText size={16} /><h3>Espace documentaire</h3>
+        </div>
+        <div className="card-body">
+          {/* Téléversement */}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
+            <div className="form-group" style={{ margin: 0, minWidth: 200 }}>
+              <label>Type de document</label>
+              <select className="form-control" value={docCat} onChange={e => setDocCat(e.target.value)}>
+                {DOC_CATEGORIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+            <button className="btn btn-primary" disabled={uploadingDoc}
+              onClick={() => docFileRef.current?.click()}>
+              <FiUpload size={14} /> {uploadingDoc ? 'Envoi...' : 'Téléverser'}
+            </button>
+            <input ref={docFileRef} type="file" style={{ display: 'none' }}
+              accept="image/*,application/pdf"
+              onChange={e => uploadDoc(e.target.files[0])} />
+            <span style={{ fontSize: '0.75rem', color: '#98a2b3' }}>PDF ou image</span>
+          </div>
+
+          {/* Liste */}
+          {docs.length === 0 ? (
+            <p style={{ color: '#98a2b3', textAlign: 'center', padding: 16 }}>Aucun document. Ajoutez certificat, acte de naissance, diplôme…</p>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+              {docs.map(doc => (
+                <div key={doc.id} style={{
+                  border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 12px',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                }}>
+                  <FiFileText size={20} color="#3b5beb" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{doc.category_label}</div>
+                    <div style={{ fontSize: '0.72rem', color: '#98a2b3' }}>
+                      {new Date(doc.created_at).toLocaleDateString('fr-FR')}
+                    </div>
+                  </div>
+                  <a href={doc.file_url} target="_blank" rel="noreferrer" className="btn-icon" title="Ouvrir">
+                    <FiDownload size={15} />
+                  </a>
+                  <button className="btn-icon" title="Supprimer" style={{ color: '#ef4444' }}
+                    onClick={() => deleteDoc(doc.id)}>
+                    <FiTrash2 size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

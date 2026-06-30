@@ -108,12 +108,14 @@ function ActivityLogs() {
                   <th>Rôle</th>
                   <th>Action</th>
                   <th>Description</th>
-                  <th>IP</th>
+                  <th>Modification</th>
+                  <th>Appareil</th>
+                  <th>IP / Localisation</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', color: '#98a2b3', padding: 32 }}>Aucun événement trouvé</td></tr>
+                  <tr><td colSpan={8} style={{ textAlign: 'center', color: '#98a2b3', padding: 32 }}>Aucun événement trouvé</td></tr>
                 ) : filtered.map(log => {
                   const colors = ACTION_COLORS[log.action] || { bg: '#f1f5f9', color: '#475569' };
                   return (
@@ -130,8 +132,23 @@ function ActivityLogs() {
                           {log.action_label || log.action}
                         </span>
                       </td>
-                      <td style={{ fontSize: '0.85rem', maxWidth: 320 }}>{log.description}</td>
-                      <td style={{ fontSize: '0.82rem', color: '#98a2b3', fontFamily: 'monospace' }}>{log.ip_address || '—'}</td>
+                      <td style={{ fontSize: '0.85rem', maxWidth: 260 }}>{log.description}</td>
+                      <td style={{ fontSize: '0.8rem' }}>
+                        {(log.old_value || log.new_value) ? (
+                          <span>
+                            <span style={{ color: '#991b1b', textDecoration: 'line-through' }}>{log.old_value || '∅'}</span>
+                            {' → '}
+                            <span style={{ color: '#166534', fontWeight: 600 }}>{log.new_value || '∅'}</span>
+                          </span>
+                        ) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                      </td>
+                      <td style={{ fontSize: '0.78rem', color: '#667085', whiteSpace: 'nowrap' }}>
+                        {(log.browser || log.os) ? `${log.browser || '?'} · ${log.os || '?'}` : '—'}
+                      </td>
+                      <td style={{ fontSize: '0.78rem', color: '#98a2b3' }}>
+                        <span style={{ fontFamily: 'monospace' }}>{log.ip_address || '—'}</span>
+                        {log.location && <div style={{ color: '#667085' }}>{log.location}</div>}
+                      </td>
                     </tr>
                   );
                 })}

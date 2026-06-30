@@ -159,6 +159,8 @@ function Sidebar({ isOpen, onClose }) {
     { section: t('sidebar.sections.administration') },
     ...(modules.payments !== false ? [{ to: '/payments', icon: <FiDollarSign />, label: t('sidebar.links.payments') }] : []),
     ...(modules.reports !== false ? [{ to: '/reports', icon: <FiBarChart2 />, label: t('sidebar.links.reports') }] : []),
+    { to: '/analytics', icon: <FiBarChart2 />, label: t('sidebar.links.analytics', { defaultValue: 'Analyses' }) },
+    { to: '/academic-years', icon: <FiGrid />, label: t('sidebar.links.academic_years', { defaultValue: 'Années scolaires' }) },
     ...(modules.communications !== false ? [{ to: '/communications', icon: <FiMessageSquare />, label: t('sidebar.links.communications') }] : []),
     ...(modules.subjects !== false ? [{ to: '/subjects', icon: <FiBook />, label: t('sidebar.links.subjects') }] : []),
     ...(modules.expenses !== false ? [{ to: '/expenses', icon: <FiDollarSign />, label: t('sidebar.links.expenses') }] : []),

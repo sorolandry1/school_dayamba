@@ -4,7 +4,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     LoginView, MeView, ChangePasswordView, UserViewSet, ActivityLogListView,
     InvitationViewSet, PublicInvitationView,
-    PasswordResetRequestView, PasswordResetConfirmView,
+    PasswordResetRequestView, PasswordResetConfirmView, NotificationListView,
 )
 
 router = DefaultRouter()
@@ -17,6 +17,7 @@ urlpatterns = [
     path('me/', MeView.as_view(), name='me'),
     path('change-password/', ChangePasswordView.as_view(), name='change_password'),
     path('activity-logs/', ActivityLogListView.as_view(), name='activity_logs'),
+    path('notifications/', NotificationListView.as_view(), name='notifications'),
     # Inscription publique via lien d'invitation
     path('register/<uuid:token>/', PublicInvitationView.as_view(), name='register'),
     # Réinitialisation de mot de passe (mot de passe oublié)

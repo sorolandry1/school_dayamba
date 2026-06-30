@@ -349,6 +349,29 @@ class PasswordResetConfirmView(APIView):
         return Response({'message': 'Mot de passe réinitialisé avec succès.'})
 
 
+class NotificationListView(APIView):
+    """Notifications récentes (polling temps réel). `?since=<id>` ne renvoie que
+    les plus récentes que cet id."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .models import Notification
+        qs = Notification.objects.all()
+        since = request.query_params.get('since')
+        if since and str(since).isdigit():
+            qs = qs.filter(id__gt=int(since))
+            items = list(qs.order_by('id'))  # ordre croissant pour les nouveautés
+        else:
+            items = list(qs.order_by('-id')[:20])
+            items.reverse()
+        data = [{
+            'id': n.id, 'type': n.type, 'message': n.message,
+            'created_at': n.created_at.isoformat(),
+        } for n in items]
+        last_id = Notification.objects.order_by('-id').values_list('id', flat=True).first() or 0
+        return Response({'results': data, 'last_id': last_id})
+
+
 class ActivityLogListView(generics.ListAPIView):
     """List activity logs — Director/Admin only."""
     permission_classes = [IsAdmin]
@@ -370,6 +393,11 @@ class ActivityLogListView(generics.ListAPIView):
             'action_label': log.get_action_display(),
             'description': log.description,
             'ip_address': log.ip_address,
+            'old_value': log.old_value,
+            'new_value': log.new_value,
+            'browser': log.browser,
+            'os': log.os,
+            'location': log.location,
             'timestamp': log.timestamp.strftime('%d/%m/%Y %H:%M:%S'),
         } for log in qs[:200]]
         return Response(data)
