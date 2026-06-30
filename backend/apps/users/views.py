@@ -81,6 +81,14 @@ class UserViewSet(viewsets.ModelViewSet):
     search_fields = ['username', 'first_name', 'last_name', 'email']
     ordering_fields = ['last_name', 'date_joined']
 
+    def get_queryset(self):
+        qs = User.objects.all()
+        u = self.request.user
+        # Le super-admin voit tous les comptes ; sinon, seulement son école
+        if u.role != 'ADMIN' and getattr(u, 'ecole_id', None):
+            qs = qs.filter(ecole_id=u.ecole_id)
+        return qs
+
     def get_serializer_class(self):
         if self.action == 'create':
             return UserCreateSerializer
@@ -164,10 +172,17 @@ class InvitationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         from .models import Invitation
-        return Invitation.objects.select_related('created_by', 'used_by').all()
+        qs = Invitation.objects.select_related('created_by', 'used_by').all()
+        u = self.request.user
+        if u.role != 'ADMIN' and getattr(u, 'ecole_id', None):
+            qs = qs.filter(ecole_id=u.ecole_id)
+        return qs
 
     def perform_create(self, serializer):
-        invitation = serializer.save(created_by=self.request.user)
+        kw = {'created_by': self.request.user}
+        if getattr(self.request.user, 'ecole_id', None):
+            kw['ecole'] = self.request.user.ecole
+        invitation = serializer.save(**kw)
         from apps.users.models import log_activity
         log_activity(
             self.request.user, 'USER_ADD',

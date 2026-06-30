@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.db.models import Count, Q
 from apps.users.permissions import IsAttendanceStaff
+from apps.users.mixins import EcoleScopedMixin
 from apps.students.models import Student
 from utils.sms_service import send_sms
 from utils.email_service import send_email
@@ -17,7 +18,8 @@ from apps.payments.models import Payment
 logger = logging.getLogger('apps')
 
 
-class AttendanceViewSet(viewsets.ModelViewSet):
+class AttendanceViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
+    ecole_lookup = 'student__ecole'
     queryset = Attendance.objects.select_related('student', 'student__classe', 'scanned_by').all()
     serializer_class = AttendanceSerializer
     permission_classes = [IsAttendanceStaff]
@@ -160,7 +162,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
     def today(self, request):
         """Get today's attendance records."""
         today = timezone.now().date()
-        records = self.queryset.filter(date=today)
+        records = self.get_queryset().filter(date=today)
         classe_id = request.query_params.get('classe_id')
         if classe_id:
             records = records.filter(student__classe_id=classe_id)

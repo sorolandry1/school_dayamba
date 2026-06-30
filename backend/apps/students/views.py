@@ -11,6 +11,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from apps.users.permissions import IsAdmin, IsAdminOrReadOnly, IsStudentStaff
+from apps.users.mixins import EcoleScopedMixin
 from utils.qr_generator import generate_qr_for_student
 from .models import Student, StudentDocument
 from .serializers import (
@@ -45,7 +46,7 @@ IMPORT_COLUMNS = [
 HEADER_LABELS = [c[0] for c in IMPORT_COLUMNS]
 
 
-class StudentViewSet(viewsets.ModelViewSet):
+class StudentViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
     queryset = Student.objects.select_related('classe', 'classe__level').all()
     permission_classes = [IsStudentStaff]
     parser_classes = [MultiPartParser, FormParser]
@@ -68,7 +69,7 @@ class StudentViewSet(viewsets.ModelViewSet):
                           f"contenir que {settings.MAX_STUDENTS_PER_SCHOOL} élèves actifs. "
                           f"Désactivez des élèves existants pour libérer des places."
             })
-        student = serializer.save()
+        student = serializer.save(**self.ecole_save_kwargs())
         generate_qr_for_student(student)
         from apps.users.models import notify
         notify('STUDENT', f"Nouvel élève inscrit : {student.full_name}"
@@ -500,10 +501,11 @@ def _parse_file(file, ext: str) -> list[dict]:
 
 
 
-class StudentDocumentViewSet(viewsets.ModelViewSet):
+class StudentDocumentViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
     """Espace documentaire des élèves (certificat, acte de naissance, photo,
     diplôme, bulletin signé…). Lecture pour le personnel ; gestion par
     ADMIN/DIRECTOR/ÉDUCATEUR."""
+    ecole_lookup = 'student__ecole'
     queryset = StudentDocument.objects.select_related('student', 'uploaded_by').all()
     serializer_class = StudentDocumentSerializer
     permission_classes = [IsStudentStaff]

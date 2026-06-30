@@ -2,7 +2,8 @@ from django.db import models
 
 
 class AcademicYear(models.Model):
-    name = models.CharField(max_length=20, unique=True)  # e.g. "2025-2026"
+    ecole = models.ForeignKey('users.Ecole', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    name = models.CharField(max_length=20)  # e.g. "2025-2026"
     start_date = models.DateField()
     end_date = models.DateField()
     is_current = models.BooleanField(default=False)
@@ -16,7 +17,8 @@ class AcademicYear(models.Model):
 
     def save(self, *args, **kwargs):
         if self.is_current:
-            AcademicYear.objects.filter(is_current=True).exclude(pk=self.pk).update(is_current=False)
+            # Une seule année courante PAR ÉCOLE
+            AcademicYear.objects.filter(is_current=True, ecole=self.ecole).exclude(pk=self.pk).update(is_current=False)
         super().save(*args, **kwargs)
 
 
@@ -33,6 +35,7 @@ class Level(models.Model):
 
 
 class Classe(models.Model):
+    ecole = models.ForeignKey('users.Ecole', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     name = models.CharField(max_length=50)  # e.g. "6ème A"
     level = models.ForeignKey(Level, on_delete=models.CASCADE, related_name='classes')
     academic_year = models.ForeignKey(AcademicYear, on_delete=models.CASCADE, related_name='classes')

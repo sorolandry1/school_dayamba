@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
 from django.db.models import Avg, Count
 from apps.users.permissions import CanEditGrades
+from apps.users.mixins import EcoleScopedMixin
 from .models import Grade
 from .serializers import GradeSerializer, GradeCreateSerializer, BulkGradeSerializer
 import logging
@@ -12,7 +13,8 @@ import logging
 logger = logging.getLogger('apps')
 
 
-class GradeViewSet(viewsets.ModelViewSet):
+class GradeViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
+    ecole_lookup = 'student__ecole'
     queryset = Grade.objects.select_related(
         'student', 'subject', 'subject__classe', 'created_by'
     ).all()

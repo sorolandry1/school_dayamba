@@ -2,6 +2,7 @@ from django.db import models
 
 
 class Subject(models.Model):
+    ecole = models.ForeignKey('users.Ecole', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     name = models.CharField(max_length=100)
     coefficient = models.DecimalField(max_digits=4, decimal_places=2, default=1.00)
     teacher = models.ForeignKey(

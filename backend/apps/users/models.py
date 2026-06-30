@@ -103,6 +103,7 @@ class Invitation(models.Model):
     ]
 
     token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    ecole = models.ForeignKey('users.Ecole', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
     note = models.CharField(
         max_length=200, blank=True, default='',

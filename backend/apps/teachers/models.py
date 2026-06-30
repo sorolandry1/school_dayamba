@@ -4,6 +4,7 @@ from django.utils import timezone
 
 
 class Teacher(models.Model):
+    ecole = models.ForeignKey('users.Ecole', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
         related_name='teacher_profile'

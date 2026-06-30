@@ -3,11 +3,12 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from apps.users.permissions import IsAdmin, IsAdminOrReadOnly, IsAdminOrTeacher, IsClasseStaff
+from apps.users.mixins import EcoleScopedMixin
 from .models import Teacher, LessonLog
 from .serializers import TeacherSerializer, LessonLogSerializer
 
 
-class TeacherViewSet(viewsets.ModelViewSet):
+class TeacherViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
     queryset = Teacher.objects.select_related('user').prefetch_related('classes', 'subjects').all()
     serializer_class = TeacherSerializer
     permission_classes = [IsAdminOrReadOnly]

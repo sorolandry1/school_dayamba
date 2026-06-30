@@ -5,13 +5,14 @@ from django.db.models import Sum, Count, Q
 from apps.users.permissions import (
     IsAdmin, IsAdminOrReadOnly, IsCommunicationStaff, IsCashStaff, IsCashManager,
 )
+from apps.users.mixins import EcoleScopedMixin
 from utils.sms_service import send_sms
 from utils.email_service import send_bulk_email
 from .models import Payment, Expense
 from .serializers import PaymentSerializer, ExpenseSerializer
 
 
-class PaymentViewSet(viewsets.ModelViewSet):
+class PaymentViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
     queryset = Payment.objects.select_related('student', 'student__classe', 'recorded_by').all()
     serializer_class = PaymentSerializer
     permission_classes = [IsCashStaff]
@@ -40,7 +41,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             send_sms(student.parent_phone, msg)
 
     def perform_create(self, serializer):
-        payment = serializer.save(recorded_by=self.request.user)
+        payment = serializer.save(recorded_by=self.request.user, **self.ecole_save_kwargs())
         self._notify_parent(payment)
         from apps.users.models import notify
         notify('PAYMENT', f"Paiement reçu : {int(payment.amount):,} FCFA — {payment.student.full_name}".replace(',', ' '))
@@ -82,7 +83,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         })
 
 
-class ExpenseViewSet(viewsets.ModelViewSet):
+class ExpenseViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
     queryset = Expense.objects.select_related('recorded_by').all()
     serializer_class = ExpenseSerializer
     permission_classes = [IsCashManager]
@@ -91,7 +92,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     ordering_fields = ['date', 'amount']
 
     def perform_create(self, serializer):
-        serializer.save(recorded_by=self.request.user)
+        serializer.save(recorded_by=self.request.user, **self.ecole_save_kwargs())
 
     @action(detail=False, methods=['get'])
     def stats(self, request):

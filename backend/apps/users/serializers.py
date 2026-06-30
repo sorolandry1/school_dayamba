@@ -40,8 +40,11 @@ def sync_teacher_profile(user, subjects):
     if user.role != 'TEACHER':
         return
     teacher, _ = Teacher.objects.get_or_create(
-        user=user, defaults={'phone': user.phone or ''}
+        user=user, defaults={'phone': user.phone or '', 'ecole': user.ecole}
     )
+    if teacher.ecole_id is None and user.ecole_id:
+        teacher.ecole = user.ecole
+        teacher.save(update_fields=['ecole'])
     if subjects is None:
         return
     new_ids = [s.id for s in subjects]
@@ -222,6 +225,7 @@ class RegistrationSerializer(serializers.Serializer):
             email=validated_data.get('email', '').strip(),
             phone=validated_data.get('phone', '').strip(),
             role=invitation.role,
+            ecole=invitation.ecole,
         )
         user.set_password(validated_data['password'])
         user.save()

@@ -807,6 +807,8 @@ class DocumentTemplateListCreateView(APIView):
         doc_type    = request.query_params.get('document_type')
         school_type = request.query_params.get('school_type')
         qs = DocumentTemplate.objects.all()
+        if request.user.role != 'ADMIN' and getattr(request.user, 'ecole_id', None):
+            qs = qs.filter(ecole_id=request.user.ecole_id)
         if doc_type:
             qs = qs.filter(document_type=doc_type)
         if school_type:
@@ -818,7 +820,7 @@ class DocumentTemplateListCreateView(APIView):
         from .serializers import DocumentTemplateSerializer
         ser = DocumentTemplateSerializer(data=request.data)
         if ser.is_valid():
-            ser.save(created_by=request.user)
+            ser.save(created_by=request.user, ecole=getattr(request.user, 'ecole', None))
             return Response(ser.data, status=201)
         return Response(ser.errors, status=400)
 

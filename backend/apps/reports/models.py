@@ -25,6 +25,7 @@ class DocumentTemplate(models.Model):
         ('prive',      'Établissement privé'),
     ]
 
+    ecole = models.ForeignKey('users.Ecole', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     name = models.CharField(max_length=200)
     document_type = models.CharField(max_length=20, choices=DOCUMENT_TYPES)
     style_preset = models.CharField(max_length=20, choices=STYLE_PRESETS, default='classic')

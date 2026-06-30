@@ -3,6 +3,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from apps.users.permissions import IsAdmin, IsClasseStaff
+from apps.users.mixins import EcoleScopedMixin
 from .models import AcademicYear, Level, Classe, ScheduleEntry
 from .serializers import (
     AcademicYearSerializer, LevelSerializer,
@@ -10,8 +11,9 @@ from .serializers import (
 )
 
 
-class ScheduleEntryViewSet(viewsets.ModelViewSet):
+class ScheduleEntryViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
     """Emploi du temps : créneaux par classe (matière, salle, jour, horaires)."""
+    ecole_lookup = 'classe__ecole'
     queryset = ScheduleEntry.objects.select_related('classe', 'subject', 'subject__teacher', 'subject__teacher__user').all()
     serializer_class = ScheduleEntrySerializer
     permission_classes = [IsClasseStaff]
@@ -24,16 +26,16 @@ _LEVEL_ORDER = {
 }
 
 
-def _current_or_new_year():
-    """Retourne l'année académique courante, en la créant si aucune n'existe."""
-    year = AcademicYear.objects.filter(is_current=True).first()
+def _current_or_new_year(ecole=None):
+    """Retourne l'année académique courante de l'école, en la créant si besoin."""
+    year = AcademicYear.objects.filter(is_current=True, ecole=ecole).first()
     if year:
         return year
     today = date.today()
     start_y = today.year if today.month >= 9 else today.year - 1
     name = f"{start_y}-{start_y + 1}"
     year, _ = AcademicYear.objects.get_or_create(
-        name=name,
+        name=name, ecole=ecole,
         defaults={
             'start_date': date(start_y, 10, 1),
             'end_date': date(start_y + 1, 7, 31),
@@ -67,12 +69,15 @@ def _infer_level_name(classe_name):
     return ' '.join(parts[:-1]) if len(parts) >= 2 else classe_name
 
 
-class AcademicYearViewSet(viewsets.ModelViewSet):
+class AcademicYearViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
     queryset = AcademicYear.objects.all()
     serializer_class = AcademicYearSerializer
     permission_classes = [IsClasseStaff]
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def perform_create(self, serializer):
+        serializer.save(**self.ecole_save_kwargs())
+
+    @action(detail=True, methods=['post'], permission_classes=[IsClasseStaff])
     def set_current(self, request, pk=None):
         year = self.get_object()
         year.is_current = True
@@ -87,7 +92,7 @@ class LevelViewSet(viewsets.ModelViewSet):
     pagination_class = None
 
 
-class ClasseViewSet(viewsets.ModelViewSet):
+class ClasseViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
     queryset = Classe.objects.select_related('level', 'academic_year').all()
     permission_classes = [IsClasseStaff]
     filterset_fields = ['level', 'academic_year']
@@ -98,13 +103,17 @@ class ClasseViewSet(viewsets.ModelViewSet):
             return ClasseDetailSerializer
         return ClasseSerializer
 
+    def perform_create(self, serializer):
+        serializer.save(**self.ecole_save_kwargs())
+
     def create(self, request, *args, **kwargs):
         """Création autonome : si l'année ou le niveau ne sont pas fournis,
         on résout l'année courante (créée au besoin) et le niveau via `level_name`.
         Permet de créer une classe même sur une base vierge."""
+        ecole = getattr(request.user, 'ecole', None)
         data = request.data.copy()
         if not data.get('academic_year'):
-            data['academic_year'] = _current_or_new_year().id
+            data['academic_year'] = _current_or_new_year(ecole).id
         if not data.get('level') and data.get('level_name'):
             data['level'] = _get_or_create_level(data.get('level_name')).id
         serializer = self.get_serializer(data=data)
@@ -125,10 +134,15 @@ class ClasseViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def current_year(self, request):
-        """Get classes for the current academic year."""
-        current = AcademicYear.objects.filter(is_current=True).first()
+        """Classes de l'année courante (de l'école de l'utilisateur)."""
+        years = AcademicYear.objects.filter(is_current=True)
+        u = request.user
+        if u.role != 'ADMIN' and getattr(u, 'ecole_id', None):
+            years = years.filter(ecole_id=u.ecole_id)
+        current = years.first()
         if not current:
             return Response([])
-        classes = self.queryset.filter(academic_year=current)
+        # get_queryset applique déjà le filtrage par école
+        classes = self.get_queryset().filter(academic_year=current)
         serializer = ClasseSerializer(classes, many=True)
         return Response(serializer.data)

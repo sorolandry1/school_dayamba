@@ -16,6 +16,7 @@ class Expense(models.Model):
         CAISSE = 'CAISSE', 'Caisse'
         BANQUE = 'BANQUE', 'Banque'
 
+    ecole = models.ForeignKey('users.Ecole', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     label = models.CharField(max_length=200)
     category = models.CharField(max_length=20, choices=Category.choices, default=Category.AUTRE)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
@@ -48,6 +49,7 @@ class Payment(models.Model):
         EXAMEN = 'EXAMEN', 'Frais d\'examen'
         AUTRE = 'AUTRE', 'Autre'
 
+    ecole = models.ForeignKey('users.Ecole', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     student = models.ForeignKey(
         'students.Student', on_delete=models.CASCADE, related_name='payments'
     )
