@@ -31,6 +31,10 @@ function Students() {
   const [form, setForm]                 = useState(emptyForm);
   const [photoPreview, setPhotoPreview] = useState(null);
   const photoInputRef                   = useRef(null);
+  // Capture caméra (téléphone / webcam PC)
+  const [showCamera, setShowCamera]     = useState(false);
+  const videoRef                        = useRef(null);
+  const streamRef                       = useRef(null);
   // Import state
   const [showImport, setShowImport]     = useState(false);
 
@@ -63,6 +67,43 @@ function Students() {
     const reader = new FileReader();
     reader.onload = (e) => setPhotoPreview(e.target.result);
     reader.readAsDataURL(file);
+  };
+
+  // Démarre/arrête le flux caméra avec le modal de capture
+  useEffect(() => {
+    if (!showCamera) return undefined;
+    let active = true;
+    navigator.mediaDevices?.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+      .then(stream => {
+        if (!active) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) videoRef.current.srcObject = stream;
+      })
+      .catch(() => {
+        alert("Impossible d'accéder à la caméra. Vérifiez les autorisations du navigateur.");
+        setShowCamera(false);
+      });
+    return () => {
+      active = false;
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
+    };
+  }, [showCamera]);
+
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    canvas.toBlob(blob => {
+      if (!blob) return;
+      handlePhotoChange(new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' }));
+      setShowCamera(false);
+    }, 'image/jpeg', 0.9);
   };
 
   const handleSubmit = async (e) => {
@@ -257,6 +298,31 @@ function Students() {
         />
       )}
 
+      {/* ── Capture photo via la caméra ──────────────────────────────────── */}
+      {showCamera && (
+        <div className="modal-overlay" onClick={() => setShowCamera(false)} style={{ zIndex: 1100 }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <div className="modal-header">
+              <h3><FiCamera style={{ marginRight: 8 }} />Prendre une photo</h3>
+              <button className="btn-icon" onClick={() => setShowCamera(false)}><FiX /></button>
+            </div>
+            <div className="modal-body" style={{ textAlign: 'center' }}>
+              <video ref={videoRef} autoPlay playsInline muted
+                style={{ width: '100%', borderRadius: 10, background: '#000', maxHeight: 360 }} />
+              <p style={{ fontSize: '0.78rem', color: '#98a2b3', marginTop: 8 }}>
+                Autorisez l'accès à la caméra puis cliquez sur « Capturer ».
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setShowCamera(false)}>Annuler</button>
+              <button type="button" className="btn btn-primary" onClick={capturePhoto}>
+                <FiCamera size={14} /> Capturer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Modal profil élève ───────────────────────────────────────────── */}
       {showProfile && profileStudent && (
         <div className="modal-overlay" onClick={() => setShowProfile(false)}>
@@ -326,6 +392,10 @@ function Students() {
                     <button type="button" className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '5px 12px' }}
                       onClick={() => photoInputRef.current?.click()}>
                       <FiUpload size={13} /> {photoPreview ? 'Changer la photo' : 'Ajouter une photo'}
+                    </button>
+                    <button type="button" className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '5px 12px', marginLeft: 6 }}
+                      onClick={() => setShowCamera(true)}>
+                      <FiCamera size={13} /> Prendre une photo
                     </button>
                     {photoPreview && (
                       <button type="button" className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '5px 12px', marginLeft: 6, color: '#ef4444' }}
