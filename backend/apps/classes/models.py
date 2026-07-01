@@ -79,3 +79,22 @@ class ScheduleEntry(models.Model):
 
     def __str__(self):
         return f"{self.classe.name} — {self.get_day_display()} {self.start_time}"
+
+
+class ScheduleFile(models.Model):
+    """Fichier d'emploi du temps attaché à une classe."""
+    classe = models.ForeignKey(Classe, on_delete=models.CASCADE, related_name='schedule_files')
+    file = models.FileField(upload_to='schedule_files/')
+    label = models.CharField(max_length=200, blank=True, default='')
+    uploaded_by = models.ForeignKey(
+        'users.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='uploaded_schedule_files'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'schedule_files'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Fichier emploi du temps — {self.classe.name} ({self.file.name})"

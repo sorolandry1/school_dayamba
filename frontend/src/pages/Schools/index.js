@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { FiPlus, FiEdit2, FiTrash2, FiX, FiHome, FiToggleLeft, FiToggleRight, FiAlertCircle } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiX, FiHome, FiToggleLeft, FiToggleRight, FiAlertCircle, FiGlobe } from 'react-icons/fi';
 
 const empty = { name: '', address: '', phone: '', email: '', is_active: true };
 
@@ -13,10 +14,52 @@ function Schools() {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
+  const [activeEcoleId, setActiveEcoleId] = useState(null);
+  const [message, setMessage] = useState('');
+  const navigate = useNavigate();
+
+  const getSchoolSettings = () => {
+    try { return JSON.parse(localStorage.getItem('schoolSettings') || '{}'); }
+    catch { return {}; }
+  };
+
+  const saveSchoolSettings = (settings) => {
+    localStorage.setItem('schoolSettings', JSON.stringify(settings));
+    window.dispatchEvent(new Event('schoolSettingsChanged'));
+  };
+
+  useEffect(() => {
+    const settings = getSchoolSettings();
+    if (settings.selectedEcoleId) {
+      setActiveEcoleId(Number(settings.selectedEcoleId));
+    }
+  }, []);
+
+  const showMessage = (text) => {
+    setMessage(text);
+    setTimeout(() => setMessage(''), 4000);
+  };
+
+  const handleTroubleshoot = (school) => {
+    const settings = getSchoolSettings();
+    const next = { ...settings, selectedEcoleId: Number(school.id) };
+    saveSchoolSettings(next);
+    setActiveEcoleId(Number(school.id));
+    showMessage(`Mode dépannage activé pour "${school.name}".`);
+    navigate('/dashboard');
+  };
+
+  const clearRemoteContext = () => {
+    const settings = getSchoolSettings();
+    const next = { ...settings, selectedEcoleId: null };
+    saveSchoolSettings(next);
+    setActiveEcoleId(null);
+    showMessage('Contexte de dépannage réinitialisé.');
+  };
 
   const fetchEcoles = useCallback(async () => {
     try {
-      const res = await api.get('/auth/ecoles/');
+      const res = await api.get('/auth/ecoles/', { skipEcoleScope: true });
       setEcoles(res.data.results || res.data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -43,8 +86,8 @@ function Schools() {
     e.preventDefault();
     setSaving(true);
     try {
-      if (editId) await api.patch(`/auth/ecoles/${editId}/`, form);
-      else await api.post('/auth/ecoles/', form);
+      if (editId) await api.patch(`/auth/ecoles/${editId}/`, form, { skipEcoleScope: true });
+      else await api.post('/auth/ecoles/', form, { skipEcoleScope: true });
       setModal(false);
       fetchEcoles();
     } catch (err) { alert('Erreur: ' + JSON.stringify(err.response?.data)); }
@@ -52,14 +95,22 @@ function Schools() {
   };
 
   const toggleActive = async (e) => {
-    try { await api.patch(`/auth/ecoles/${e.id}/`, { is_active: !e.is_active }); fetchEcoles(); }
-    catch { alert('Action impossible.'); }
+    try {
+      await api.patch(`/auth/ecoles/${e.id}/`, { is_active: !e.is_active }, { skipEcoleScope: true });
+      fetchEcoles();
+    } catch {
+      alert('Action impossible.');
+    }
   };
 
   const remove = async (e) => {
     if (!window.confirm(`Supprimer l'école "${e.name}" ? (${e.user_count} utilisateur(s) seront détachés)`)) return;
-    try { await api.delete(`/auth/ecoles/${e.id}/`); fetchEcoles(); }
-    catch { alert('Suppression impossible.'); }
+    try {
+      await api.delete(`/auth/ecoles/${e.id}/`, { skipEcoleScope: true });
+      fetchEcoles();
+    } catch {
+      alert('Suppression impossible.');
+    }
   };
 
   return (
@@ -68,6 +119,19 @@ function Schools() {
         <div>
           <h2>Établissements</h2>
           <p>{ecoles.length} école(s) — une plateforme, plusieurs établissements</p>
+          {activeEcoleId && (
+            <div style={{ marginTop: 8, color: '#1a73e8', fontSize: '0.92rem' }}>
+              Contexte de dépannage actif pour l'établissement n°{activeEcoleId}.
+              <button type="button" className="btn btn-link" style={{ marginLeft: 10, padding: 0 }} onClick={clearRemoteContext}>
+                Réinitialiser le contexte
+              </button>
+            </div>
+          )}
+          {message && (
+            <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 10, background: '#eff6ff', color: '#1d4ed8' }}>
+              {message}
+            </div>
+          )}
         </div>
         <button className="btn btn-primary" onClick={openCreate}><FiPlus /> Nouvelle école</button>
       </div>
@@ -98,7 +162,10 @@ function Schools() {
                       </span>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', gap: 6 }}>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button className="btn btn-sm btn-secondary" title="Dépanner" onClick={() => handleTroubleshoot(e)}>
+                          <FiGlobe size={14} />
+                        </button>
                         <button className="btn btn-sm btn-secondary" title={e.is_active ? 'Désactiver' : 'Activer'} onClick={() => toggleActive(e)}>
                           {e.is_active ? <FiToggleRight size={16} /> : <FiToggleLeft size={16} />}
                         </button>

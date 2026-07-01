@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../../services/api';
-import { FiPlus, FiTrash2, FiClock, FiX, FiMapPin } from 'react-icons/fi';
+import { FiPlus, FiTrash2, FiClock, FiX, FiMapPin, FiUpload, FiFileText, FiDownload } from 'react-icons/fi';
 
 const DAYS = [[0, 'Lundi'], [1, 'Mardi'], [2, 'Mercredi'], [3, 'Jeudi'], [4, 'Vendredi'], [5, 'Samedi']];
 const empty = { subject: '', subject_name: '', room: '', day: 0, start_time: '08:00', end_time: '09:00' };
@@ -9,15 +9,19 @@ function Timetable() {
   const [classes, setClasses] = useState([]);
   const [selectedClasse, setSelectedClasse] = useState('');
   const [entries, setEntries] = useState([]);
+  const [scheduleFiles, setScheduleFiles] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
-    api.get('/classes/current_year/').then(r => setClasses(r.data.results || r.data)).catch(() => {});
-    api.get('/subjects/', { params: { page_size: 500 } }).then(r => setSubjects(r.data.results || r.data)).catch(() => {});
+    api.get('/classes/current_year/').then(r => setClasses(r.data.results || r.data)).catch(() => { });
+    api.get('/subjects/', { params: { page_size: 500 } }).then(r => setSubjects(r.data.results || r.data)).catch(() => { });
   }, []);
 
   const load = useCallback(() => {
@@ -25,11 +29,23 @@ function Timetable() {
     setLoading(true);
     api.get(`/classes/schedule/?classe=${selectedClasse}&page_size=200`)
       .then(r => setEntries(r.data.results || r.data))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, [selectedClasse]);
 
   useEffect(() => { load(); }, [load]);
+
+  const loadScheduleFiles = async () => {
+    if (!selectedClasse) { setScheduleFiles([]); return; }
+    try {
+      const res = await api.get('/classes/schedule-files/', { params: { classe: selectedClasse, page_size: 200 } });
+      setScheduleFiles(res.data.results || res.data);
+    } catch {
+      setScheduleFiles([]);
+    }
+  };
+
+  useEffect(() => { loadScheduleFiles(); }, [selectedClasse]);
 
   // Matières proposées : celles de la classe + globales
   const classSubjects = subjects.filter(s => String(s.classe) === String(selectedClasse) || !s.classe);
@@ -63,6 +79,46 @@ function Timetable() {
     try { await api.delete(`/classes/schedule/${id}/`); load(); } catch { alert('Suppression impossible.'); }
   };
 
+  const handleFileChange = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg'].includes(ext)) {
+      alert('Format non supporté. Utilisez PDF, Word, Excel ou image.');
+      return;
+    }
+    setSelectedFile(file);
+  };
+
+  const uploadScheduleFile = async () => {
+    if (!selectedClasse || !selectedFile) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('classe', selectedClasse);
+      formData.append('file', selectedFile);
+      formData.append('label', selectedFile.name);
+      await api.post('/classes/schedule-files/', formData);
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = null;
+      loadScheduleFiles();
+    } catch (err) {
+      alert('Erreur lors de l\'upload : ' + JSON.stringify(err.response?.data));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const deleteScheduleFile = async (id) => {
+    if (!window.confirm('Supprimer ce fichier d\'emploi du temps ?')) return;
+    try {
+      await api.delete(`/classes/schedule-files/${id}/`);
+      loadScheduleFiles();
+    } catch {
+      alert('Impossible de supprimer le fichier.');
+    }
+  };
+
   const byDay = (d) => entries.filter(e => e.day === d).sort((a, b) => a.start_time.localeCompare(b.start_time));
   const classeName = classes.find(c => String(c.id) === String(selectedClasse))?.name || '';
 
@@ -82,6 +138,66 @@ function Timetable() {
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </div>
+
+      {selectedClasse && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button className="btn btn-secondary" type="button" onClick={() => fileInputRef.current?.click()}>
+                  <FiUpload size={16} style={{ marginRight: 6 }} />Importer fichier
+                </button>
+                <span style={{ color: '#475569', fontSize: '0.95rem' }}>
+                  {selectedFile ? selectedFile.name : 'PDF, Word, Excel, image'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn btn-primary" type="button" disabled={!selectedFile || uploading} onClick={uploadScheduleFile}>
+                  {uploading ? 'Téléversement...' : 'Uploader'}
+                </button>
+                {selectedFile && (
+                  <button className="btn btn-secondary" type="button" onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = null; }}>
+                    Annuler
+                  </button>
+                )}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                style={{ display: 'none' }}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                onChange={handleFileChange}
+              />
+            </div>
+            <div style={{ minWidth: 320 }}>
+              {scheduleFiles.length > 0 ? (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {scheduleFiles.map(file => (
+                    <div key={file.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, border: '1px solid #e2e8f0', borderRadius: 10, padding: 10 }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{file.label || file.file_url?.split('/').pop()}</div>
+                        <div style={{ color: '#64748b', fontSize: '0.8rem' }}>
+                          {file.created_at?.slice(0, 10)}{file.uploaded_by_name ? ` · ${file.uploaded_by_name}` : ''}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <a className="btn btn-outline-secondary btn-sm" href={file.file_url} target="_blank" rel="noreferrer">
+                          <FiDownload size={14} />
+                        </a>
+                        <button className="btn btn-outline-danger btn-sm" type="button" onClick={() => deleteScheduleFile(file.id)}>
+                          Supprimer
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: '#64748b', fontSize: '0.95rem' }}>Aucun document d'emploi du temps attaché.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {!selectedClasse ? (
         <div className="card"><div className="card-body" style={{ textAlign: 'center', padding: 60, color: '#98a2b3' }}>

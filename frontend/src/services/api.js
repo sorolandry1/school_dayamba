@@ -19,7 +19,11 @@ api.interceptors.request.use(
     try {
       const schoolSettings = JSON.parse(localStorage.getItem('schoolSettings') || '{}');
       const selectedEcoleId = schoolSettings.selectedEcoleId;
-      if (selectedEcoleId && !config.params?.ecole) {
+      if (
+        selectedEcoleId &&
+        !config.skipEcoleScope &&
+        !config.params?.ecole
+      ) {
         config.params = { ...(config.params || {}), ecole: selectedEcoleId };
       }
     } catch {

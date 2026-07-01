@@ -1,5 +1,30 @@
 from rest_framework import serializers
-from .models import AcademicYear, Level, Classe, ScheduleEntry
+from .models import AcademicYear, Level, Classe, ScheduleEntry, ScheduleFile
+
+
+class ScheduleFileSerializer(serializers.ModelSerializer):
+    classe_name = serializers.CharField(source='classe.name', read_only=True)
+    file_url = serializers.SerializerMethodField()
+    uploaded_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ScheduleFile
+        fields = ['id', 'classe', 'classe_name', 'label', 'file', 'file_url', 'uploaded_by_name', 'created_at']
+        extra_kwargs = {
+            'file': {'write_only': True, 'required': True},
+            'label': {'required': False, 'allow_blank': True},
+        }
+
+    def get_file_url(self, obj):
+        if obj.file:
+            request = self.context.get('request')
+            return request.build_absolute_uri(obj.file.url) if request else obj.file.url
+        return None
+
+    def get_uploaded_by_name(self, obj):
+        if obj.uploaded_by:
+            return f"{obj.uploaded_by.first_name} {obj.uploaded_by.last_name}".strip()
+        return None
 
 
 class ScheduleEntrySerializer(serializers.ModelSerializer):

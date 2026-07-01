@@ -480,7 +480,8 @@ function SuperAdmin() {
         const blob = dataURLtoBlob(settings.logoUrl);
         if (blob) fd.append('logo', blob, 'logo.png');
       }
-      await api.patch('/reports/platform-settings/', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      // Laisser Axios gérer l'en-tête Content-Type pour FormData afin d'inclure le boundary.
+      await api.patch('/reports/platform-settings/', fd);
       showToast('Paramètres enregistrés (appliqués aux documents).');
     } catch {
       showToast('Enregistré localement, mais échec côté serveur.', 'error');

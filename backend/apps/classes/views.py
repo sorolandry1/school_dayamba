@@ -1,13 +1,15 @@
 from datetime import date
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from apps.users.permissions import IsAdmin, IsClasseStaff
 from apps.users.mixins import EcoleScopedMixin
-from .models import AcademicYear, Level, Classe, ScheduleEntry
+from .models import AcademicYear, Level, Classe, ScheduleEntry, ScheduleFile
 from .serializers import (
     AcademicYearSerializer, LevelSerializer,
-    ClasseSerializer, ClasseDetailSerializer, ScheduleEntrySerializer
+    ClasseSerializer, ClasseDetailSerializer, ScheduleEntrySerializer,
+    ScheduleFileSerializer,
 )
 
 
@@ -18,6 +20,19 @@ class ScheduleEntryViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
     serializer_class = ScheduleEntrySerializer
     permission_classes = [IsClasseStaff]
     filterset_fields = ['classe', 'day']
+
+
+class ScheduleFileViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
+    """Fichiers d'emploi du temps associés à une classe."""
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    ecole_lookup = 'classe__ecole'
+    queryset = ScheduleFile.objects.select_related('classe', 'uploaded_by').all()
+    serializer_class = ScheduleFileSerializer
+    permission_classes = [IsClasseStaff]
+    filterset_fields = ['classe']
+
+    def perform_create(self, serializer):
+        serializer.save(uploaded_by=self.request.user)
 
 # Ordre d'affichage des niveaux courants (noms tels qu'utilisés par le frontend)
 _LEVEL_ORDER = {
