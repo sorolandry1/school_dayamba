@@ -38,7 +38,7 @@ SchoolPro couvre l'ensemble du cycle de gestion d'un établissement scolaire :
 | Paiements | Suivi par élève, statut (payé/en attente/en retard), reçu généré |
 | Dépenses | Gestion des charges par catégorie, bilan financier temps réel |
 | Bulletins | PDF automatique (ReportLab), rang, moyenne pondérée, appréciation |
-| Rapports | Absences, paiements, classements, exports Excel (openpyxl) |
+| Rapports | Absences, paiements, classements, exports Excel, PDF d'absences journalières/hebdomadaires/mensuelles |
 | Communications | Broadcast SMS, WhatsApp et Email aux parents par classe ou établissement |
 | Espace enseignant | Tableau de bord, saisie des notes, cahier de texte (LessonLog) |
 | Journal d'activité | Audit complet des actions (connexions, modifications de notes, etc.) |
@@ -294,6 +294,7 @@ Jeton à usage unique, **valable 1 heure**, anciens jetons invalidés à chaque 
 
 - `GET /reports/dashboard/` — stats globales (mise en cache 60 s)
 - `GET /reports/attendance/` — rapport absences par classe + plage de dates
+- `GET /reports/attendance/pdf/` — PDF d'absences périodique (daily/weekly/monthly/custom)
 - `GET /reports/payments/` — taux de paiement par classe
 - `GET /reports/export/` — export Excel stylisé (notes, absences, paiements, classements)
 - `GET /reports/bulletin/{id}/` — bulletin PDF individuel
@@ -333,7 +334,7 @@ Templates Email disponibles : `results`, `absence`, `payment_reminder`, `meeting
 | Présences | `/attendance` | Scanner QR + récapitulatif du jour |
 | Paiements | `/payments` | Suivi et statuts |
 | Dépenses | `/expenses` | Gestion par catégorie |
-| Rapports | `/reports` | 4 onglets + exports Excel + bulletins PDF/ZIP |
+| Rapports | `/reports` | 4 onglets, exports Excel, PDF d'absences périodique, bulletins PDF/ZIP |
 | Communications | `/communications` | Broadcast SMS / WhatsApp / Email par classe ou global |
 | Utilisateurs | `/users` | Gestion des comptes |
 | Journal | `/logs` | Audit des activités |

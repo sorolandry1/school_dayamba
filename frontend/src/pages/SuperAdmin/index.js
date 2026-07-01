@@ -25,19 +25,20 @@ import {
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const SCHOOL_TYPE_OPTIONS = [
-  { value: 'all',        label: 'Tous les établissements' },
-  { value: 'primaire',   label: 'École primaire' },
-  { value: 'college',    label: 'Collège' },
-  { value: 'lycee',      label: 'Lycée' },
+  { value: 'all', label: 'Tous les établissements' },
+  { value: 'primaire', label: 'École primaire' },
+  { value: 'college', label: 'Collège' },
+  { value: 'lycee', label: 'Lycée' },
   { value: 'universite', label: 'Université' },
-  { value: 'technique',  label: 'Enseignement technique' },
-  { value: 'prive',      label: 'Établissement privé' },
+  { value: 'technique', label: 'Enseignement technique' },
+  { value: 'prive', label: 'Établissement privé' },
 ];
 
 const DEFAULT_SETTINGS = {
   schoolName: 'SchoolPro',
   schoolYear: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`,
   schoolType: 'all',
+  selectedEcoleId: null,
   themeColor: '#1a3c8f',
   accentColor: '#3b5beb',
   logoUrl: '',
@@ -83,7 +84,12 @@ const TABS = [
 function loadSettings() {
   try {
     const saved = localStorage.getItem('schoolSettings');
-    return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved), modules: { ...DEFAULT_SETTINGS.modules, ...(JSON.parse(saved).modules || {}) } } : { ...DEFAULT_SETTINGS };
+    const parsed = saved ? JSON.parse(saved) : {};
+    return {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+      modules: { ...DEFAULT_SETTINGS.modules, ...(parsed.modules || {}) },
+    };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -124,7 +130,7 @@ function Toast({ msg, type }) {
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-function PlatformTab({ settings, onChange }) {
+function PlatformTab({ settings, onChange, ecoles, selectedEcoleId, onSelectEcole }) {
   const logoRef = useRef();
 
   const handleLogoUpload = (e) => {
@@ -137,6 +143,20 @@ function PlatformTab({ settings, onChange }) {
 
   return (
     <>
+      <SectionCard title="Contexte école">
+        <div className="form-group">
+          <label>École sélectionnée</label>
+          <select className="form-control" value={selectedEcoleId || ''} onChange={e => onSelectEcole(e.target.value || null)}>
+            <option value="">Plateforme entière</option>
+            {ecoles.map(e => (
+              <option key={e.id} value={e.id}>{e.name}</option>
+            ))}
+          </select>
+          <small style={{ color: '#667085', fontSize: '0.78rem', marginTop: 4, display: 'block' }}>
+            Sélectionnez une école pour les actions de super-administrateur et les rapports filtrés.
+          </small>
+        </div>
+      </SectionCard>
       <SectionCard title="Identité de l'établissement">
         <div className="form-row">
           <div className="form-group">
@@ -402,6 +422,7 @@ function SuperAdmin() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('platform');
   const [settings, setSettings] = useState(loadSettings);
+  const [ecoles, setEcoles] = useState([]);
   const [toast, setToast] = useState({ msg: '', type: 'success' });
 
   // Seul l'Admin peut accéder
@@ -427,12 +448,23 @@ function SuperAdmin() {
         logoUrl: d.logo_url || prev.logoUrl,
         documents: { ...prev.documents, bulletinHeader: d.bulletin_header ?? prev.documents.bulletinHeader },
       }));
-    }).catch(() => {});
+    }).catch(() => { });
+  }, []);
+
+  useEffect(() => {
+    api.get('/auth/ecoles/').then(r => setEcoles(r.data.results || r.data)).catch(() => { });
   }, []);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast({ msg: '', type: 'success' }), 3000);
+  };
+
+  const handleSelectEcole = (ecoleId) => {
+    const next = { ...settings, selectedEcoleId: ecoleId ? Number(ecoleId) : null };
+    setSettings(next);
+    saveSettings(next);
+    showToast(ecoleId ? 'École sélectionnée pour le contexte admin.' : 'Contexte plateforme rétabli.');
   };
 
   const handleSave = async () => {
@@ -492,7 +524,13 @@ function SuperAdmin() {
         ))}
       </div>
 
-      {activeTab === 'platform' && <PlatformTab settings={settings} onChange={setSettings} />}
+      {activeTab === 'platform' && <PlatformTab
+        settings={settings}
+        onChange={setSettings}
+        ecoles={ecoles}
+        selectedEcoleId={settings.selectedEcoleId}
+        onSelectEcole={handleSelectEcole}
+      />}
       {activeTab === 'modules' && <ModulesTab settings={settings} onChange={setSettings} />}
       {activeTab === 'documents' && <DocumentsTab settings={settings} onChange={setSettings} onNavigateToEditor={() => navigate('/document-editor')} />}
       {activeTab === 'system' && <SystemTab onReset={handleReset} />}

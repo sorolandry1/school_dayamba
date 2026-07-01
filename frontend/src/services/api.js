@@ -16,6 +16,15 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    try {
+      const schoolSettings = JSON.parse(localStorage.getItem('schoolSettings') || '{}');
+      const selectedEcoleId = schoolSettings.selectedEcoleId;
+      if (selectedEcoleId && !config.params?.ecole) {
+        config.params = { ...(config.params || {}), ecole: selectedEcoleId };
+      }
+    } catch {
+      // ignore invalid localStorage state
+    }
     return config;
   },
   (error) => Promise.reject(error)

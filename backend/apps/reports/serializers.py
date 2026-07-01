@@ -4,12 +4,13 @@ from .models import DocumentTemplate, PlatformSettings
 
 class PlatformSettingsSerializer(serializers.ModelSerializer):
     logo_url = serializers.SerializerMethodField()
+    ecole_id = serializers.IntegerField(source='ecole_id', read_only=True)
 
     class Meta:
         model = PlatformSettings
-        fields = ['id', 'school_name', 'school_year', 'school_type',
+        fields = ['id', 'ecole_id', 'school_name', 'school_year', 'school_type',
                   'bulletin_header', 'logo', 'logo_url', 'updated_at']
-        read_only_fields = ['id', 'updated_at']
+        read_only_fields = ['id', 'updated_at', 'ecole_id']
         extra_kwargs = {'logo': {'write_only': True, 'required': False}}
 
     def get_logo_url(self, obj):
@@ -30,14 +31,16 @@ class ReportRequestSerializer(serializers.Serializer):
 
 class DocumentTemplateSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
+    ecole_id = serializers.IntegerField(source='ecole_id', read_only=True)
+    ecole_name = serializers.CharField(source='ecole.name', read_only=True)
 
     class Meta:
         model = DocumentTemplate
         fields = [
             'id', 'name', 'document_type', 'style_preset', 'school_type', 'config',
-            'is_default', 'created_by_name', 'created_at', 'updated_at',
+            'ecole_id', 'ecole_name', 'is_default', 'created_by_name', 'created_at', 'updated_at',
         ]
-        read_only_fields = ['created_by_name', 'created_at', 'updated_at']
+        read_only_fields = ['created_by_name', 'created_at', 'updated_at', 'ecole_id', 'ecole_name']
 
     def get_created_by_name(self, obj):
         if obj.created_by:

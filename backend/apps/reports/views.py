@@ -24,6 +24,24 @@ from utils.pdf_generator import (
 from django.db.models import Avg, Count, Q
 
 
+def _selected_ecole(request):
+    from apps.users.models import Ecole
+    u = getattr(request, 'user', None)
+    if u and u.is_authenticated and u.role != 'ADMIN':
+        return getattr(u, 'ecole', None)
+    eid = request.query_params.get('ecole')
+    if eid and str(eid).isdigit():
+        return Ecole.objects.filter(id=int(eid)).first()
+    return None
+
+
+def _ecole_id(request):
+    """École à utiliser pour filtrer les agrégats : celle de l'utilisateur (non
+    ADMIN), ou `?ecole=` pour le super-admin, sinon None (toutes écoles)."""
+    selected = _selected_ecole(request)
+    return getattr(selected, 'id', None)
+
+
 class BulletinPDFView(APIView):
     permission_classes = [CanViewReports]
 
@@ -32,12 +50,16 @@ class BulletinPDFView(APIView):
             'bulletin',
             template_id=request.query_params.get('template_id'),
             school_type=request.query_params.get('school_type'),
+            request=request,
         )
 
     def get(self, request, student_id):
-        try:
-            student = Student.objects.select_related('classe', 'classe__level').get(id=student_id)
-        except Student.DoesNotExist:
+        eid = _ecole_id(request)
+        students = Student.objects.select_related('classe', 'classe__level').filter(id=student_id)
+        if eid:
+            students = students.filter(ecole_id=eid)
+        student = students.first()
+        if not student:
             return Response({'error': 'Élève non trouvé.'}, status=404)
 
         subjects = Subject.objects.select_related('teacher', 'teacher__user').filter(classe=student.classe)
@@ -91,9 +113,12 @@ class BulletinClassePDFView(APIView):
     permission_classes = [CanViewReports]
 
     def get(self, request, classe_id):
-        try:
-            classe = Classe.objects.select_related('academic_year', 'level').get(id=classe_id)
-        except Classe.DoesNotExist:
+        eid = _ecole_id(request)
+        classes = Classe.objects.select_related('academic_year', 'level').filter(id=classe_id)
+        if eid:
+            classes = classes.filter(ecole_id=eid)
+        classe = classes.first()
+        if not classe:
             return Response({'error': 'Classe non trouvée.'}, status=404)
 
         students = Student.objects.filter(classe=classe, is_active=True).order_by('last_name', 'first_name')
@@ -107,6 +132,7 @@ class BulletinClassePDFView(APIView):
             'bulletin',
             template_id=request.query_params.get('template_id'),
             school_type=request.query_params.get('school_type'),
+            request=request,
         )
 
         # Pre-calculate rankings for all students once
@@ -163,36 +189,49 @@ class DashboardStatsView(APIView):
 
     def get(self, request):
         from django.core.cache import cache
-        cache_key = 'dashboard_stats_admin'
+        eid = _ecole_id(request)
+        cache_key = f'dashboard_stats_{eid or "all"}'
         cached = cache.get(cache_key)
         if cached is not None:
             return Response(cached)
 
-        total_students = Student.objects.filter(is_active=True).count()
-        total_teachers = 0
-        try:
-            from apps.teachers.models import Teacher
-            total_teachers = Teacher.objects.count()
-        except Exception:
-            pass
-
+        students_qs = Student.objects.filter(is_active=True)
+        payments_qs = Payment.objects.all()
+        attendance_qs = Attendance.objects.all()
+        from apps.payments.models import Expense
+        expenses_qs = Expense.objects.all()
         from apps.classes.models import Classe, AcademicYear
-        current_year = AcademicYear.objects.filter(is_current=True).first()
-        total_classes = Classe.objects.filter(academic_year=current_year).count() if current_year else 0
+        from apps.teachers.models import Teacher
+        classes_qs = Classe.objects.select_related('level')
+        years_qs = AcademicYear.objects.filter(is_current=True)
+        teachers_qs = Teacher.objects.all()
+        if eid:
+            students_qs = students_qs.filter(ecole_id=eid)
+            payments_qs = payments_qs.filter(ecole_id=eid)
+            attendance_qs = attendance_qs.filter(student__ecole_id=eid)
+            expenses_qs = expenses_qs.filter(ecole_id=eid)
+            classes_qs = classes_qs.filter(ecole_id=eid)
+            years_qs = years_qs.filter(ecole_id=eid)
+            teachers_qs = teachers_qs.filter(ecole_id=eid)
+
+        total_students = students_qs.count()
+        total_teachers = teachers_qs.count()
+        current_year = years_qs.first()
+        total_classes = classes_qs.filter(academic_year=current_year).count() if current_year else 0
 
         from django.db.models import Sum as _Sum
         payment_stats = {
-            'total_collected': Payment.objects.filter(status='PAID').aggregate(t=_Sum('amount'))['t'] or 0,
-            'total_pending': Payment.objects.filter(status='PENDING').aggregate(t=_Sum('amount'))['t'] or 0,
-            'total_overdue': Payment.objects.filter(status='OVERDUE').aggregate(t=_Sum('amount'))['t'] or 0,
-            'count_paid': Payment.objects.filter(status='PAID').count(),
-            'count_pending': Payment.objects.filter(status='PENDING').count(),
-            'count_overdue': Payment.objects.filter(status='OVERDUE').count(),
+            'total_collected': payments_qs.filter(status='PAID').aggregate(t=_Sum('amount'))['t'] or 0,
+            'total_pending': payments_qs.filter(status='PENDING').aggregate(t=_Sum('amount'))['t'] or 0,
+            'total_overdue': payments_qs.filter(status='OVERDUE').aggregate(t=_Sum('amount'))['t'] or 0,
+            'count_paid': payments_qs.filter(status='PAID').count(),
+            'count_pending': payments_qs.filter(status='PENDING').count(),
+            'count_overdue': payments_qs.filter(status='OVERDUE').count(),
         }
 
         from django.utils import timezone
         today = timezone.now().date()
-        today_attendance = Attendance.objects.filter(date=today)
+        today_attendance = attendance_qs.filter(date=today)
         scanned_in = today_attendance.filter(status__in=['PRESENT', 'LATE']).count()
         attendance_stats = {
             'present_today': today_attendance.filter(status='PRESENT').count(),
@@ -200,13 +239,11 @@ class DashboardStatsView(APIView):
             'absent_today': max(0, total_students - scanned_in),
         }
 
-        from apps.payments.models import Expense
-        from django.db.models import Sum as _Sum2
         expense_stats = {
-            'total_expenses': float(Expense.objects.aggregate(t=_Sum2('amount'))['t'] or 0),
+            'total_expenses': float(expenses_qs.aggregate(t=_Sum('amount'))['t'] or 0),
             'net_balance': float(
-                (Payment.objects.filter(status='PAID').aggregate(t=_Sum2('amount'))['t'] or 0) -
-                (Expense.objects.aggregate(t=_Sum2('amount'))['t'] or 0)
+                (payments_qs.filter(status='PAID').aggregate(t=_Sum('amount'))['t'] or 0) -
+                (expenses_qs.aggregate(t=_Sum('amount'))['t'] or 0)
             ),
         }
 
@@ -230,16 +267,23 @@ class AccountingView(APIView):
         from django.db.models import Sum
         from apps.payments.models import Expense
 
-        paid = Payment.objects.filter(status='PAID')
+        eid = _ecole_id(request)
+        payments_qs = Payment.objects.all()
+        expenses_qs = Expense.objects.all()
+        if eid:
+            payments_qs = payments_qs.filter(ecole_id=eid)
+            expenses_qs = expenses_qs.filter(ecole_id=eid)
+
+        paid = payments_qs.filter(status='PAID')
         produits = float(paid.aggregate(t=Sum('amount'))['t'] or 0)
-        charges = float(Expense.objects.aggregate(t=Sum('amount'))['t'] or 0)
+        charges = float(expenses_qs.aggregate(t=Sum('amount'))['t'] or 0)
         resultat = produits - charges
-        creances = float(Payment.objects.filter(status__in=['PENDING', 'OVERDUE'])
+        creances = float(payments_qs.filter(status__in=['PENDING', 'OVERDUE'])
                          .aggregate(t=Sum('amount'))['t'] or 0)
 
         def solde(method):
             r = float(paid.filter(method=method).aggregate(t=Sum('amount'))['t'] or 0)
-            d = float(Expense.objects.filter(method=method).aggregate(t=Sum('amount'))['t'] or 0)
+            d = float(expenses_qs.filter(method=method).aggregate(t=Sum('amount'))['t'] or 0)
             return {'recettes': r, 'depenses': d, 'solde': r - d}
 
         caisse = solde('CAISSE')
@@ -276,13 +320,19 @@ class AccountingExportView(APIView):
             c.fill = PatternFill('solid', fgColor='1E40AF')
             c.alignment = Alignment(horizontal='center')
 
+        eid = _ecole_id(request)
+        pay_qs = Payment.objects.filter(status='PAID').select_related('student')
+        exp_qs = Expense.objects.all()
+        if eid:
+            pay_qs = pay_qs.filter(ecole_id=eid)
+            exp_qs = exp_qs.filter(ecole_id=eid)
         rows = []
-        for p in Payment.objects.filter(status='PAID').select_related('student'):
+        for p in pay_qs:
             rows.append((p.payment_date, 'Recette',
                          f"{p.get_payment_type_display()} — {p.student.full_name}",
                          dict(Payment._meta.get_field('method').choices).get(p.method, p.method),
                          float(p.amount), 0))
-        for e in Expense.objects.all():
+        for e in exp_qs:
             rows.append((e.date, 'Dépense', f"{e.label} ({e.get_category_display()})",
                          e.get_method_display(), 0, float(e.amount)))
         rows.sort(key=lambda r: str(r[0]))
@@ -318,14 +368,25 @@ class ChartsView(APIView):
         def fmt(d):
             return d.strftime('%m/%Y') if d else '—'
 
+        eid = _ecole_id(request)
+        payments_base = Payment.objects.all()
+        expenses_base = Expense.objects.all()
+        attendance_base = Attendance.objects.all()
+        classes_base = Classe.objects.select_related('level').all()
+        if eid:
+            payments_base = payments_base.filter(ecole_id=eid)
+            expenses_base = expenses_base.filter(ecole_id=eid)
+            attendance_base = attendance_base.filter(student__ecole_id=eid)
+            classes_base = classes_base.filter(ecole_id=eid)
+
         # Paiements encaissés par mois
-        pay = (Payment.objects.filter(status='PAID')
+        pay = (payments_base.filter(status='PAID')
                .annotate(m=TruncMonth('payment_date')).values('m')
                .annotate(total=Sum('amount')).order_by('m'))
         payments_evolution = [{'period': fmt(r['m']), 'montant': float(r['total'] or 0)} for r in pay]
 
         # Finances : recettes vs dépenses par mois
-        exp = (Expense.objects.annotate(m=TruncMonth('date')).values('m')
+        exp = (expenses_base.annotate(m=TruncMonth('date')).values('m')
                .annotate(total=Sum('amount')).order_by('m'))
         months = {}
         for r in pay:
@@ -339,7 +400,7 @@ class ChartsView(APIView):
         ]
 
         # Absentéisme par mois
-        att = (Attendance.objects.annotate(m=TruncMonth('date')).values('m')
+        att = (attendance_base.annotate(m=TruncMonth('date')).values('m')
                .annotate(total=Count('id'),
                          absent=Count('id', filter=Q(status='ABSENT')),
                          late=Count('id', filter=Q(status='LATE'))).order_by('m'))
@@ -352,7 +413,7 @@ class ChartsView(APIView):
 
         # Réussite par classe (moyenne par élève → moyenne de classe + taux ≥ 10)
         success = []
-        for c in Classe.objects.select_related('level').all():
+        for c in classes_base:
             ps = list(Grade.objects.filter(student__classe=c).values('student').annotate(avg=Avg('value')))
             if not ps:
                 continue
@@ -373,19 +434,21 @@ class ChartsView(APIView):
 
 class AttendanceReportView(APIView):
     """Absence report per class with optional date range."""
-    permission_classes = [IsAdmin]
+    permission_classes = [CanViewReports]
 
     def get(self, request):
         classe_id = request.query_params.get('classe_id')
         date_from = request.query_params.get('date_from')
         date_to = request.query_params.get('date_to')
 
+        eid = _ecole_id(request)
         students_qs = Student.objects.filter(is_active=True)
+        attendance_qs = Attendance.objects.all()
+        if eid:
+            students_qs = students_qs.filter(ecole_id=eid)
+            attendance_qs = attendance_qs.filter(student__ecole_id=eid)
         if classe_id:
             students_qs = students_qs.filter(classe_id=classe_id)
-
-        attendance_qs = Attendance.objects.all()
-        if classe_id:
             attendance_qs = attendance_qs.filter(student__classe_id=classe_id)
         if date_from:
             attendance_qs = attendance_qs.filter(date__gte=date_from)
@@ -429,14 +492,174 @@ class AttendanceReportView(APIView):
         return Response({'students': result, 'global': global_stats})
 
 
+class AttendanceReportPDFView(APIView):
+    """Generate a PDF attendance report for daily/weekly/monthly or custom ranges."""
+    permission_classes = [CanViewReports]
+
+    def get(self, request):
+        classe_id = request.query_params.get('classe_id')
+        period = request.query_params.get('period')
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+
+        eid = _ecole_id(request)
+        classe_name = None
+        if classe_id:
+            classe_qs = Classe.objects.filter(id=classe_id)
+            if eid:
+                classe_qs = classe_qs.filter(ecole_id=eid)
+            classe = classe_qs.first()
+            if not classe:
+                return Response({'error': 'Classe introuvable.'}, status=404)
+            classe_name = classe.name
+
+        students_qs = Student.objects.filter(is_active=True)
+        attendance_qs = Attendance.objects.all()
+        if eid:
+            students_qs = students_qs.filter(ecole_id=eid)
+            attendance_qs = attendance_qs.filter(student__ecole_id=eid)
+        if classe_id:
+            students_qs = students_qs.filter(classe_id=classe_id)
+            attendance_qs = attendance_qs.filter(student__classe_id=classe_id)
+
+        start_date, end_date = self._resolve_date_range(period, date_from, date_to)
+        attendance_qs = attendance_qs.filter(date__gte=start_date, date__lte=end_date)
+
+        result = []
+        for student in students_qs.select_related('classe').order_by('classe__name', 'last_name', 'first_name'):
+            records = attendance_qs.filter(student=student)
+            agg = records.aggregate(
+                total=Count('id'),
+                present=Count('id', filter=Q(status='PRESENT')),
+                absent=Count('id', filter=Q(status='ABSENT')),
+                late=Count('id', filter=Q(status='LATE')),
+            )
+            total_hours_absent = sum(r.hours_absent for r in records if r.hours_absent)
+            result.append({
+                'student_name': student.full_name,
+                'classe': student.classe.name if student.classe else '—',
+                'total_days': agg['total'],
+                'present': agg['present'],
+                'absent': agg['absent'],
+                'late': agg['late'],
+                'hours_absent': round(total_hours_absent, 1),
+            })
+
+        global_stats = attendance_qs.aggregate(
+            total=Count('id'),
+            present=Count('id', filter=Q(status='PRESENT')),
+            absent=Count('id', filter=Q(status='ABSENT')),
+            late=Count('id', filter=Q(status='LATE')),
+        )
+
+        pdf_buffer = _build_attendance_report_pdf(
+            result, global_stats, start_date, end_date, classe_name, period
+        )
+        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        filename = f"rapport_absences_{period or 'custom'}_{start_date}_{end_date}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    def _resolve_date_range(self, period, date_from, date_to):
+        from django.utils import timezone
+        import calendar
+        from datetime import timedelta, date
+
+        if date_from or date_to:
+            start = date.fromisoformat(date_from) if date_from else date.today()
+            end = date.fromisoformat(date_to) if date_to else date.today()
+            return start, end
+
+        today = timezone.localdate()
+        if period == 'daily':
+            return today, today
+        if period == 'weekly':
+            start = today - timedelta(days=today.weekday())
+            end = start + timedelta(days=6)
+            return start, end
+        if period == 'monthly':
+            start = today.replace(day=1)
+            _, last_day = calendar.monthrange(today.year, today.month)
+            end = today.replace(day=last_day)
+            return start, end
+        return today, today
+
+
+def _build_attendance_report_pdf(rows, global_stats, start_date, end_date, classe_name=None, period=None):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+
+    title = 'Rapport d\'absences'
+    subtitle = f"Période : {start_date.strftime('%d/%m/%Y')} — {end_date.strftime('%d/%m/%Y')}"
+    if period == 'daily':
+        subtitle = f"Période : journalier — {start_date.strftime('%d/%m/%Y')}"
+    elif period == 'weekly':
+        subtitle = f"Période : hebdomadaire — {start_date.strftime('%d/%m/%Y')} à {end_date.strftime('%d/%m/%Y')}"
+    elif period == 'monthly':
+        subtitle = f"Période : mensuel — {start_date.strftime('%d/%m/%Y')} à {end_date.strftime('%d/%m/%Y')}"
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                            rightMargin=1.5 * cm, leftMargin=1.5 * cm,
+                            topMargin=1.5 * cm, bottomMargin=1.5 * cm)
+    styles = getSampleStyleSheet()
+    header_style = ParagraphStyle('Header', parent=styles['Heading1'], fontSize=18, spaceAfter=12)
+    normal_style = styles['Normal']
+    normal_style.spaceAfter = 8
+
+    elements = [Paragraph(title, header_style), Paragraph(subtitle, normal_style)]
+    if classe_name:
+        elements.append(Paragraph(f"Classe : {classe_name}", normal_style))
+    elements.append(Spacer(1, 10))
+
+    summary_text = (
+        f"Total enregistrements : {global_stats.get('total', 0)} · "
+        f"Présents : {global_stats.get('present', 0)} · "
+        f"Retards : {global_stats.get('late', 0)} · "
+        f"Absents : {global_stats.get('absent', 0)}"
+    )
+    elements.append(Paragraph(summary_text, normal_style))
+    elements.append(Spacer(1, 10))
+
+    table_data = [[
+        'Élève', 'Classe', 'Jours', 'Présents', 'Retards', 'Absents', 'Heures abs.'
+    ]]
+    for row in rows:
+        table_data.append([
+            row['student_name'], row['classe'], row['total_days'],
+            row['present'], row['late'], row['absent'], row['hours_absent'],
+        ])
+
+    table = Table(table_data, repeatRows=1, hAlign='LEFT')
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e40af')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ALIGN', (2, 0), (-1, -1), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e0')),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+    ]))
+    elements.append(table)
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
 class PaymentReportView(APIView):
     """Payment rates per class."""
     permission_classes = [IsAdmin]
 
     def get(self, request):
         classe_id = request.query_params.get('classe_id')
+        _eid = _ecole_id(request)
 
         classes_qs = Classe.objects.all()
+        if _eid:
+            classes_qs = classes_qs.filter(ecole_id=_eid)
         if classe_id:
             classes_qs = classes_qs.filter(id=classe_id)
 
@@ -476,6 +699,7 @@ class ExcelExportView(APIView):
     def get(self, request):
         export_type = request.query_params.get('type', 'grades')
         classe_id = request.query_params.get('classe_id')
+        _eid = _ecole_id(request)
 
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -510,6 +734,8 @@ class ExcelExportView(APIView):
             style_header(1, len(headers))
 
             qs = Grade.objects.select_related('student', 'student__classe', 'subject').all()
+            if _eid:
+                qs = qs.filter(student__ecole_id=_eid)
             if classe_id:
                 qs = qs.filter(student__classe_id=classe_id)
 
@@ -536,6 +762,8 @@ class ExcelExportView(APIView):
             style_header(1, len(headers))
 
             qs = Attendance.objects.select_related('student', 'student__classe').all()
+            if _eid:
+                qs = qs.filter(student__ecole_id=_eid)
             if classe_id:
                 qs = qs.filter(student__classe_id=classe_id)
 
@@ -561,6 +789,8 @@ class ExcelExportView(APIView):
             style_header(1, len(headers))
 
             qs = Payment.objects.select_related('student', 'student__classe').all()
+            if _eid:
+                qs = qs.filter(student__ecole_id=_eid)
             if classe_id:
                 qs = qs.filter(student__classe_id=classe_id)
 
@@ -589,6 +819,11 @@ class ExcelExportView(APIView):
             if not classe_id:
                 return Response({'error': 'classe_id requis pour le classement'}, status=400)
 
+            classe_qs = Classe.objects.filter(id=classe_id)
+            if _eid:
+                classe_qs = classe_qs.filter(ecole_id=_eid)
+            if not classe_qs.exists():
+                return Response({'error': 'Classe non trouvée.'}, status=404)
             students = Student.objects.filter(classe_id=classe_id, is_active=True)
             subjects = Subject.objects.filter(classe_id=classe_id)
             rankings = []
@@ -648,6 +883,9 @@ class ClassStatsView(APIView):
         today = timezone.now().date()
 
         classes = Classe.objects.select_related('level').all()
+        _eid = _ecole_id(request)
+        if _eid:
+            classes = classes.filter(ecole_id=_eid)
         class_ids = list(classes.values_list('id', flat=True))
 
         # --- Bulk grade averages per class ---
@@ -726,13 +964,26 @@ class ClassStatsView(APIView):
         return Response(result)
 
 
-def _get_platform_school_type():
-    """Return the school_type stored in platform settings (DB), defaulting to 'all'."""
+def _platform_settings(request=None):
+    """Return the matching PlatformSettings object or global fallback."""
     try:
         from .models import PlatformSettings
-        st = PlatformSettings.get_solo().school_type
-        if st:
-            return st
+        ecole = _selected_ecole(request) if request is not None else None
+        if ecole:
+            obj = PlatformSettings.objects.filter(ecole=ecole).first()
+            if obj:
+                return obj
+        return PlatformSettings.get_solo(ecole=None)
+    except Exception:
+        return None
+
+
+def _get_platform_school_type(request=None):
+    """Return the school_type stored in platform settings (DB), defaulting to 'all'."""
+    try:
+        ps = _platform_settings(request)
+        if ps and ps.school_type:
+            return ps.school_type
     except Exception:
         pass
     try:
@@ -743,7 +994,7 @@ def _get_platform_school_type():
 
 
 class PlatformSettingsView(APIView):
-    """Réglages d'identité de l'établissement (singleton).
+    """Réglages d'identité de l'établissement.
     Lecture : tout utilisateur authentifié. Écriture : admin/directeur."""
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
@@ -753,9 +1004,10 @@ class PlatformSettingsView(APIView):
         return [IsAdmin()]
 
     def get(self, request):
-        from .models import PlatformSettings
         from .serializers import PlatformSettingsSerializer
-        obj = PlatformSettings.get_solo()
+        obj = _platform_settings(request)
+        if obj is None:
+            obj = _platform_settings(None)
         return Response(PlatformSettingsSerializer(obj, context={'request': request}).data)
 
     def put(self, request):
@@ -765,31 +1017,44 @@ class PlatformSettingsView(APIView):
         return self._update(request)
 
     def _update(self, request):
-        from .models import PlatformSettings
         from .serializers import PlatformSettingsSerializer
-        obj = PlatformSettings.get_solo()
+        ecole = _selected_ecole(request)
+        obj = PlatformSettings.get_solo(ecole=ecole)
         ser = PlatformSettingsSerializer(obj, data=request.data, partial=True, context={'request': request})
         ser.is_valid(raise_exception=True)
         ser.save()
         return Response(ser.data)
 
 
-def _resolve_template(document_type, template_id=None, school_type=None):
-    """Return template config dict or None. Prefers school-type-specific default."""
+def _resolve_template(document_type, template_id=None, school_type=None, request=None):
+    """Return template config dict or None. Prefers school-specific and school-type defaults."""
     from .models import DocumentTemplate
+    selected_ecole = _selected_ecole(request) if request is not None else None
+    allowed_filter = Q(ecole__isnull=True)
+    if selected_ecole is not None:
+        allowed_filter = Q(ecole=selected_ecole) | Q(ecole__isnull=True)
+
     # template_id peut arriver sous forme de chaîne ('null', '') — on sécurise
     if template_id not in (None, '', 'null', 'undefined'):
         try:
-            tmpl = DocumentTemplate.objects.filter(id=int(template_id), document_type=document_type).first()
+            tmpl = DocumentTemplate.objects.filter(
+                allowed_filter,
+                id=int(template_id),
+                document_type=document_type,
+            ).first()
         except (ValueError, TypeError):
             tmpl = None
         if tmpl:
             return tmpl.config
-    st = school_type or _get_platform_school_type()
+
+    st = school_type or _get_platform_school_type(request)
     tmpl = (
-        DocumentTemplate.objects.filter(document_type=document_type, school_type=st, is_default=True).first()
-        or DocumentTemplate.objects.filter(document_type=document_type, school_type='all', is_default=True).first()
-        or DocumentTemplate.objects.filter(document_type=document_type, is_default=True).first()
+        DocumentTemplate.objects.filter(allowed_filter, document_type=document_type, school_type=st, is_default=True)
+        .order_by('-ecole_id').first()
+        or DocumentTemplate.objects.filter(allowed_filter, document_type=document_type, school_type='all', is_default=True)
+        .order_by('-ecole_id').first()
+        or DocumentTemplate.objects.filter(allowed_filter, document_type=document_type, is_default=True)
+        .order_by('-ecole_id').first()
     )
     return tmpl.config if tmpl else None
 
@@ -804,23 +1069,30 @@ class DocumentTemplateListCreateView(APIView):
     def get(self, request):
         from .models import DocumentTemplate
         from .serializers import DocumentTemplateSerializer
-        doc_type    = request.query_params.get('document_type')
+        doc_type = request.query_params.get('document_type')
         school_type = request.query_params.get('school_type')
-        qs = DocumentTemplate.objects.all()
+        selected_ecole = _selected_ecole(request)
+        qs = DocumentTemplate.objects.filter(
+            Q(ecole__isnull=True) if selected_ecole is None else (Q(ecole=selected_ecole) | Q(ecole__isnull=True))
+        )
         if request.user.role != 'ADMIN' and getattr(request.user, 'ecole_id', None):
-            qs = qs.filter(ecole_id=request.user.ecole_id)
+            qs = qs.filter(Q(ecole_id=request.user.ecole_id) | Q(ecole__isnull=True))
         if doc_type:
             qs = qs.filter(document_type=doc_type)
         if school_type:
             qs = qs.filter(school_type=school_type)
+        qs = qs.order_by('-ecole_id', '-created_at')
         return Response(DocumentTemplateSerializer(qs, many=True).data)
 
     def post(self, request):
         from .models import DocumentTemplate
         from .serializers import DocumentTemplateSerializer
+        selected_ecole = _selected_ecole(request)
+        if request.user.role != 'ADMIN' and getattr(request.user, 'ecole', None):
+            selected_ecole = request.user.ecole
         ser = DocumentTemplateSerializer(data=request.data)
         if ser.is_valid():
-            ser.save(created_by=request.user, ecole=getattr(request.user, 'ecole', None))
+            ser.save(created_by=request.user, ecole=selected_ecole)
             return Response(ser.data, status=201)
         return Response(ser.errors, status=400)
 
@@ -828,23 +1100,29 @@ class DocumentTemplateListCreateView(APIView):
 class DocumentTemplateDetailView(APIView):
     permission_classes = [IsAdmin]
 
-    def _get_obj(self, pk):
+    def _get_obj(self, pk, request):
         from .models import DocumentTemplate
+        selected_ecole = _selected_ecole(request)
+        qs = DocumentTemplate.objects.filter(pk=pk)
+        if selected_ecole is not None:
+            qs = qs.filter(Q(ecole=selected_ecole) | Q(ecole__isnull=True))
+        elif request.user.role != 'ADMIN' and getattr(request.user, 'ecole_id', None):
+            qs = qs.filter(Q(ecole_id=request.user.ecole_id) | Q(ecole__isnull=True))
         try:
-            return DocumentTemplate.objects.get(pk=pk)
+            return qs.first()
         except DocumentTemplate.DoesNotExist:
             return None
 
     def get(self, request, pk):
         from .serializers import DocumentTemplateSerializer
-        obj = self._get_obj(pk)
+        obj = self._get_obj(pk, request)
         if not obj:
             return Response({'error': 'Modèle introuvable.'}, status=404)
         return Response(DocumentTemplateSerializer(obj).data)
 
     def put(self, request, pk):
         from .serializers import DocumentTemplateSerializer
-        obj = self._get_obj(pk)
+        obj = self._get_obj(pk, request)
         if not obj:
             return Response({'error': 'Modèle introuvable.'}, status=404)
         ser = DocumentTemplateSerializer(obj, data=request.data, partial=True)
@@ -854,7 +1132,7 @@ class DocumentTemplateDetailView(APIView):
         return Response(ser.errors, status=400)
 
     def delete(self, request, pk):
-        obj = self._get_obj(pk)
+        obj = self._get_obj(pk, request)
         if not obj:
             return Response({'error': 'Modèle introuvable.'}, status=404)
         obj.delete()
@@ -874,9 +1152,12 @@ class ClassListPDFView(APIView):
         order = request.query_params.get('order', 'merit')
         if order not in ('merit', 'alpha'):
             order = 'merit'
-        try:
-            classe = Classe.objects.select_related('level', 'academic_year').get(id=classe_id)
-        except Classe.DoesNotExist:
+        eid = _ecole_id(request)
+        classes = Classe.objects.select_related('level', 'academic_year').filter(id=classe_id)
+        if eid:
+            classes = classes.filter(ecole_id=eid)
+        classe = classes.first()
+        if not classe:
             return Response({'error': 'Classe non trouvée.'}, status=404)
 
         students = Student.objects.filter(classe=classe, is_active=True)
@@ -929,11 +1210,19 @@ class SubjectSheetPDFView(APIView):
             order = 'merit'
         if not subject_id or not classe_id:
             return Response({'error': 'subject_id et classe_id requis.'}, status=400)
+        eid = _ecole_id(request)
         try:
             subject = Subject.objects.get(id=subject_id)
-            classe = Classe.objects.select_related('academic_year').get(id=classe_id)
-        except (Subject.DoesNotExist, Classe.DoesNotExist):
-            return Response({'error': 'Matière ou classe introuvable.'}, status=404)
+            classes = Classe.objects.select_related('academic_year').filter(id=classe_id)
+            if eid:
+                classes = classes.filter(ecole_id=eid)
+            classe = classes.first()
+            if not classe:
+                raise Classe.DoesNotExist
+        except Subject.DoesNotExist:
+            return Response({'error': 'Matière introuvable.'}, status=404)
+        except Classe.DoesNotExist:
+            return Response({'error': 'Classe introuvable.'}, status=404)
 
         students = Student.objects.filter(classe=classe, is_active=True).order_by('last_name', 'first_name')
         rows = []
@@ -973,17 +1262,24 @@ class ReceiptPDFView(APIView):
     permission_classes = [IsCashManager]
 
     def get(self, request, payment_id):
+        eid = _ecole_id(request)
         try:
             payment = Payment.objects.select_related(
                 'student', 'student__classe', 'recorded_by'
             ).get(id=payment_id)
         except Payment.DoesNotExist:
             return Response({'error': 'Paiement non trouvé.'}, status=404)
+        if eid and not (
+            payment.ecole_id == eid or
+            (payment.student and payment.student.ecole_id == eid)
+        ):
+            return Response({'error': 'Paiement non trouvé.'}, status=404)
 
         template_config = _resolve_template(
             'receipt',
             template_id=request.query_params.get('template_id'),
             school_type=request.query_params.get('school_type'),
+            request=request,
         ) or {}
 
         pdf_buffer = generate_receipt_pdf_templated(payment, template_config)
@@ -998,17 +1294,21 @@ class StudentCardPDFView(APIView):
     permission_classes = [IsAdminOrTeacher]
 
     def get(self, request, student_id):
-        try:
-            student = Student.objects.select_related(
-                'classe', 'classe__academic_year'
-            ).get(id=student_id)
-        except Student.DoesNotExist:
+        eid = _ecole_id(request)
+        students = Student.objects.select_related(
+            'classe', 'classe__academic_year'
+        ).filter(id=student_id)
+        if eid:
+            students = students.filter(ecole_id=eid)
+        student = students.first()
+        if not student:
             return Response({'error': 'Élève non trouvé.'}, status=404)
 
         template_config = _resolve_template(
             'card',
             template_id=request.query_params.get('template_id'),
             school_type=request.query_params.get('school_type'),
+            request=request,
         ) or {}
 
         pdf_buffer = generate_card_pdf_templated(student, template_config)

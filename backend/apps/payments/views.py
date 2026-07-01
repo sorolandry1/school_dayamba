@@ -12,6 +12,14 @@ from .models import Payment, Expense
 from .serializers import PaymentSerializer, ExpenseSerializer
 
 
+def _ecole_id(request):
+    u = getattr(request, 'user', None)
+    if u and u.is_authenticated and u.role != 'ADMIN':
+        return getattr(u, 'ecole_id', None)
+    eid = request.query_params.get('ecole')
+    return int(eid) if eid and str(eid).isdigit() else None
+
+
 class PaymentViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
     queryset = Payment.objects.select_related('student', 'student__classe', 'recorded_by').all()
     serializer_class = PaymentSerializer
@@ -52,7 +60,7 @@ class PaymentViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def stats(self, request):
-        qs = Payment.objects.all()
+        qs = self.get_queryset()  # déjà filtré par école
         classe_id = request.query_params.get('classe_id')
         if classe_id:
             qs = qs.filter(student__classe_id=classe_id)
@@ -75,7 +83,7 @@ class PaymentViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
         student_id = request.query_params.get('student_id')
         if not student_id:
             return Response({'error': 'student_id requis'}, status=400)
-        payments = self.queryset.filter(student_id=student_id)
+        payments = self.get_queryset().filter(student_id=student_id)
         total = payments.filter(status='PAID').aggregate(total=Sum('amount'))['total'] or 0
         return Response({
             'payments': PaymentSerializer(payments, many=True).data,
@@ -97,7 +105,7 @@ class ExpenseViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def stats(self, request):
         from django.db.models import Sum as _Sum
-        qs = Expense.objects.all()
+        qs = self.get_queryset()
         date_from = request.query_params.get('date_from')
         date_to = request.query_params.get('date_to')
         if date_from:
@@ -132,9 +140,12 @@ class BroadcastSMSView(viewsets.ViewSet):
             return Response({'error': 'Le message est requis.'}, status=400)
 
         from apps.students.models import Student
+        eid = _ecole_id(request)
         students_qs = Student.objects.filter(is_active=True, parent_phone__isnull=False).exclude(parent_phone='')
         if classe_id:
             students_qs = students_qs.filter(classe_id=classe_id)
+        if eid:
+            students_qs = students_qs.filter(ecole_id=eid)
 
         sent = 0
         failed = 0
@@ -170,6 +181,7 @@ class BroadcastSMSView(viewsets.ViewSet):
             return Response({'error': 'Sujet et message requis.'}, status=400)
 
         from apps.students.models import Student
+        eid = _ecole_id(request)
         students_qs = (
             Student.objects
             .filter(is_active=True)
@@ -178,6 +190,8 @@ class BroadcastSMSView(viewsets.ViewSet):
         )
         if classe_id:
             students_qs = students_qs.filter(classe_id=classe_id)
+        if eid:
+            students_qs = students_qs.filter(ecole_id=eid)
 
         recipients = [
             {

@@ -59,8 +59,14 @@ class DocumentTemplate(models.Model):
 
 
 class PlatformSettings(models.Model):
-    """Réglages d'identité de l'établissement (singleton), définis dans le
-    panneau Super-Administrateur et appliqués aux documents générés (bulletins…)."""
+    """Réglages d'identité de l'établissement.
+
+    Permet d'avoir une identité globale de plateforme et des identités
+    spécifiques par établissement si `ecole` est renseignée."""
+    ecole = models.ForeignKey(
+        'users.Ecole', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='platform_settings'
+    )
     school_name = models.CharField(max_length=200, blank=True, default='')
     school_year = models.CharField(max_length=20, blank=True, default='')
     school_type = models.CharField(max_length=20, blank=True, default='all')
@@ -77,8 +83,14 @@ class PlatformSettings(models.Model):
         return self.school_name or 'Réglages plateforme'
 
     @classmethod
-    def get_solo(cls):
-        obj = cls.objects.first()
+    def get_solo(cls, ecole=None):
+        qs = cls.objects
+        if ecole is not None:
+            obj = qs.filter(ecole=ecole).first()
+            if obj is None:
+                obj = qs.create(ecole=ecole)
+            return obj
+        obj = qs.filter(ecole__isnull=True).first()
         if obj is None:
-            obj = cls.objects.create()
+            obj = qs.create()
         return obj

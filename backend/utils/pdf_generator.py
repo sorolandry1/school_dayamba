@@ -29,19 +29,27 @@ def _appreciation(avg):
     return 'Insuffisant'
 
 
-def _platform_settings():
-    """Réglages d'identité de l'établissement (singleton), ou None."""
+def _platform_settings(ecole=None):
+    """Réglages d'identité de l'établissement (singleton) pour l'école donnée."""
     try:
         from apps.reports.models import PlatformSettings
-        return PlatformSettings.get_solo()
+        return PlatformSettings.get_solo(ecole=ecole)
     except Exception:
         return None
 
 
-def build_token_context(student=None, rankings_data=None, payment=None, subjects=None):
+def build_token_context(student=None, rankings_data=None, payment=None, subjects=None, platform_settings=None):
     """Build a complete token → value map for a given document context."""
     ctx = {}
-    ps = _platform_settings()
+    if platform_settings is not None:
+        ps = platform_settings
+    else:
+        ecole = None
+        if student is not None and getattr(student, 'ecole', None) is not None:
+            ecole = student.ecole
+        elif payment is not None and getattr(payment, 'student', None) is not None and getattr(payment.student, 'ecole', None) is not None:
+            ecole = payment.student.ecole
+        ps = _platform_settings(ecole=ecole)
 
     # ── Document ──
     doc_number = str(_uuid.uuid4())[:8].upper()
@@ -328,7 +336,13 @@ def generate_bulletin_pdf_templated(student, subjects, rankings_data, template_c
     cfg = template_config or {}
 
     # ── Build token context and resolve all text fields ──
-    token_ctx = build_token_context(student=student, rankings_data=rankings_data, subjects=subjects)
+    platform_settings = _platform_settings(ecole=getattr(student, 'ecole', None))
+    token_ctx = build_token_context(
+        student=student,
+        rankings_data=rankings_data,
+        subjects=subjects,
+        platform_settings=platform_settings,
+    )
 
     def rt(text):
         """Shorthand: resolve tokens in a string."""
@@ -824,7 +838,8 @@ def generate_receipt_pdf_templated(payment, template_config):
     cfg = template_config or {}
 
     # ── Token context ──
-    token_ctx = build_token_context(payment=payment)
+    platform_settings = _platform_settings(ecole=getattr(getattr(payment, 'student', None), 'ecole', None))
+    token_ctx = build_token_context(payment=payment, platform_settings=platform_settings)
     def rt(text): return resolve_tokens(text, token_ctx)
 
     col = cfg.get('colors', {})
@@ -1015,7 +1030,8 @@ def generate_card_pdf_templated(student, template_config):
     cfg = template_config or {}
 
     # ── Token context ──
-    token_ctx = build_token_context(student=student)
+    platform_settings = _platform_settings(ecole=getattr(student, 'ecole', None))
+    token_ctx = build_token_context(student=student, platform_settings=platform_settings)
     def rt(text): return resolve_tokens(text, token_ctx)
 
     col = cfg.get('colors', {})

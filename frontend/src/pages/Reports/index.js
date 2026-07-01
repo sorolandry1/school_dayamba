@@ -183,6 +183,7 @@ function PerformanceTab({ classes }) {
 
 function AbsencesTab({ classes }) {
   const [selectedClasse, setSelectedClasse] = useState('');
+  const [period, setPeriod] = useState('weekly');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [data, setData] = useState(null);
@@ -192,6 +193,7 @@ function AbsencesTab({ classes }) {
     setLoading(true);
     const params = {};
     if (selectedClasse) params.classe_id = selectedClasse;
+    if (period && period !== 'custom') params.period = period;
     if (dateFrom) params.date_from = dateFrom;
     if (dateTo) params.date_to = dateTo;
     api.get('/reports/attendance/', { params })
@@ -204,6 +206,17 @@ function AbsencesTab({ classes }) {
     const p = new URLSearchParams({ type: 'absences' });
     if (selectedClasse) p.set('classe_id', selectedClasse);
     downloadFile(`/reports/export/?${p.toString()}`, 'absences.xlsx');
+  };
+
+  const downloadPdfReport = () => {
+    const p = new URLSearchParams();
+    if (selectedClasse) p.set('classe_id', selectedClasse);
+    if (period && period !== 'custom') {
+      p.set('period', period);
+    }
+    if (dateFrom) p.set('date_from', dateFrom);
+    if (dateTo) p.set('date_to', dateTo);
+    downloadFile(`/reports/attendance/pdf/?${p.toString()}`, `rapport_absences_${period === 'custom' ? 'personnalise' : period}.pdf`);
   };
 
   const students = data?.students || [];
@@ -220,6 +233,15 @@ function AbsencesTab({ classes }) {
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
+          <div className="form-group" style={{ margin: 0, minWidth: 180 }}>
+            <label style={{ fontSize: '0.82rem', color: '#667085', marginBottom: 4, display: 'block' }}>Période</label>
+            <select className="form-control" value={period} onChange={e => setPeriod(e.target.value)}>
+              <option value="daily">Journalier</option>
+              <option value="weekly">Hebdomadaire</option>
+              <option value="monthly">Mensuel</option>
+              <option value="custom">Personnalisé</option>
+            </select>
+          </div>
           <div className="form-group" style={{ margin: 0 }}>
             <label style={{ fontSize: '0.82rem', color: '#667085', marginBottom: 4, display: 'block' }}>Du</label>
             <input type="date" className="form-control" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
@@ -232,9 +254,14 @@ function AbsencesTab({ classes }) {
             <FiFilter size={14} /> Filtrer
           </button>
           {data && (
-            <button className="btn btn-secondary" onClick={downloadExcel}>
-              <FiDownload size={14} /> Excel
-            </button>
+            <>
+              <button className="btn btn-secondary" onClick={downloadExcel}>
+                <FiDownload size={14} /> Excel
+              </button>
+              <button className="btn btn-secondary" onClick={downloadPdfReport}>
+                <FiDownload size={14} /> PDF
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -539,7 +566,7 @@ function Reports() {
   const [classes, setClasses] = useState([]);
 
   useEffect(() => {
-    api.get('/classes/').then(r => setClasses(r.data.results || r.data)).catch(() => {});
+    api.get('/classes/').then(r => setClasses(r.data.results || r.data)).catch(() => { });
   }, []);
 
   return (
