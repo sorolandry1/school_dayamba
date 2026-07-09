@@ -9,7 +9,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from apps.users.permissions import IsAdmin, IsAdminOrReadOnly, IsStudentStaff
 from apps.users.mixins import EcoleScopedMixin
 from utils.qr_generator import generate_qr_for_student
@@ -74,6 +74,46 @@ class StudentViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
         from apps.users.models import notify
         notify('STUDENT', f"Nouvel élève inscrit : {student.full_name}"
                + (f" ({student.classe.name})" if student.classe else ""))
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAdmin],
+            parser_classes=[JSONParser])
+    def bulk_delete(self, request):
+        """Suppression multiple d'élèves, confirmée par le mot de passe de
+        l'administrateur/directeur connecté. Réservé à ADMIN et DIRECTOR.
+
+        Corps attendu : { "ids": [1, 2, ...], "password": "<mot de passe>" }
+        Supprime aussi en cascade les paiements, notes et présences liés.
+        """
+        ids = request.data.get('ids') or []
+        password = request.data.get('password') or ''
+
+        if not isinstance(ids, list) or not ids:
+            return Response({'error': 'Aucun élève sélectionné.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if not request.user.check_password(password):
+            return Response({'error': 'Mot de passe incorrect. Suppression annulée.'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        qs = self.filter_queryset(self.get_queryset()).filter(id__in=ids)
+        targets = list(qs)
+        if not targets:
+            return Response({'error': 'Aucun élève trouvé dans la sélection.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        names = ', '.join(s.full_name for s in targets[:20])
+        if len(targets) > 20:
+            names += f" … (+{len(targets) - 20})"
+        count = len(targets)
+        qs.delete()
+
+        from apps.users.models import log_activity
+        log_activity(request.user, 'STUDENT_DELETE',
+                     f"{count} élève(s) supprimé(s) : {names}", request)
+
+        return Response({
+            'deleted': count,
+            'message': f"{count} élève(s) supprimé(s).",
+        })
 
     @action(detail=True, methods=['post'])
     def generate_qr(self, request, pk=None):

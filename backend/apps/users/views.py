@@ -148,6 +148,62 @@ class UserViewSet(viewsets.ModelViewSet):
         user.save()
         return Response({'is_active': user.is_active})
 
+    @action(detail=False, methods=['post'])
+    def bulk_delete(self, request):
+        """Suppression multiple de comptes utilisateurs, confirmée par le mot de
+        passe de l'administrateur connecté.
+
+        Corps attendu : { "ids": [1, 2, ...], "password": "<mot de passe>" }
+        """
+        ids = request.data.get('ids') or []
+        password = request.data.get('password') or ''
+
+        if not isinstance(ids, list) or not ids:
+            return Response({'error': 'Aucun compte sélectionné.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # Confirmation par mot de passe de l'utilisateur courant
+        if not request.user.check_password(password):
+            return Response({'error': 'Mot de passe incorrect. Suppression annulée.'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        # On ne supprime que les comptes visibles par l'utilisateur (école)
+        qs = self.get_queryset().filter(id__in=ids)
+
+        blocked = []
+        # On ne peut jamais supprimer son propre compte
+        if request.user.id in [u.id for u in qs]:
+            blocked.append('votre propre compte')
+            qs = qs.exclude(id=request.user.id)
+        # Le directeur ne peut pas supprimer un compte Administrateur
+        if request.user.role == 'DIRECTOR':
+            admins = list(qs.filter(role='ADMIN'))
+            if admins:
+                blocked.append('compte(s) Administrateur')
+                qs = qs.exclude(role='ADMIN')
+
+        targets = list(qs)
+        if not targets:
+            return Response(
+                {'error': 'Aucun compte supprimable dans la sélection.'
+                          + (f" ({', '.join(blocked)} exclu(s))" if blocked else '')},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        names = ', '.join(u.get_full_name() or u.username for u in targets)
+        count = len(targets)
+        qs.delete()
+
+        from apps.users.models import log_activity
+        log_activity(request.user, 'USER_DELETE',
+                     f"{count} compte(s) supprimé(s) : {names}", request)
+        logger.warning("Suppression multiple de %s compte(s) par %s", count, request.user.username)
+
+        return Response({
+            'deleted': count,
+            'blocked': blocked,
+            'message': f"{count} compte(s) supprimé(s).",
+        })
+
     @action(detail=True, methods=['post'])
     def reset_password(self, request, pk=None):
         user = self.get_object()

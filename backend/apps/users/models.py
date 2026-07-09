@@ -64,8 +64,10 @@ class ActivityLog(models.Model):
         PAYMENT_EDIT = 'PAYMENT_EDIT', 'Paiement modifié'
         STUDENT_ADD = 'STUDENT_ADD', 'Élève ajouté'
         STUDENT_EDIT = 'STUDENT_EDIT', 'Élève modifié'
+        STUDENT_DELETE = 'STUDENT_DELETE', 'Élève(s) supprimé(s)'
         USER_ADD = 'USER_ADD', 'Utilisateur créé'
         USER_EDIT = 'USER_EDIT', 'Utilisateur modifié'
+        USER_DELETE = 'USER_DELETE', 'Utilisateur(s) supprimé(s)'
         PASSWORD_RESET = 'PASSWORD_RESET', 'Mot de passe réinitialisé'
 
     user = models.ForeignKey(

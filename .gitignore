@@ -9,6 +9,7 @@ build/
 dist/
 build_pyi/
 SchoolPro_data/
+backend/data/
 db.sqlite3
 *.sqlite3.bak-*
 media/

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../../services/api';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { downloadFile } from '../../utils/downloadPdf';
+import BulkDeleteConfirm from '../../components/BulkDeleteConfirm';
 import {
   FiPlus, FiSearch, FiEdit2, FiTrash2, FiEye, FiX,
   FiFileText, FiUpload, FiDownload, FiCheck, FiAlertCircle,
@@ -18,6 +20,8 @@ const emptyForm = {
 
 function Students() {
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
+  const canBulkDelete = ['ADMIN', 'DIRECTOR'].includes(currentUser?.role);
   const [students, setStudents]         = useState([]);
   const [stats, setStats]               = useState(null);   // { total, capacity, capacity_remaining }
   const [classes, setClasses]           = useState([]);
@@ -38,6 +42,9 @@ function Students() {
   const streamRef                       = useRef(null);
   // Import state
   const [showImport, setShowImport]     = useState(false);
+  // Sélection multiple pour suppression
+  const [selectedIds, setSelectedIds]   = useState([]);
+  const [showBulkDelete, setShowBulkDelete] = useState(false);
 
   const fetchStudents = useCallback(async () => {
     try {
@@ -166,6 +173,21 @@ function Students() {
     fetchStats();
   };
 
+  // ── Sélection multiple ────────────────────────────────────────────────
+  const allSelected = students.length > 0 && selectedIds.length === students.length;
+  const toggleSelect = (id) =>
+    setSelectedIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id]);
+  const toggleSelectAll = () =>
+    setSelectedIds(allSelected ? [] : students.map(s => s.id));
+
+  const handleBulkDelete = async (password) => {
+    await api.post('/students/bulk_delete/', { ids: selectedIds, password });
+    setShowBulkDelete(false);
+    setSelectedIds([]);
+    fetchStudents();
+    fetchStats();
+  };
+
   const handleViewProfile = (student) => {
     setProfileStudent(student);
     setShowProfile(true);
@@ -196,6 +218,12 @@ function Students() {
           )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          {canBulkDelete && selectedIds.length > 0 && (
+            <button className="btn btn-danger" onClick={() => setShowBulkDelete(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <FiTrash2 size={15} /> Supprimer ({selectedIds.length})
+            </button>
+          )}
           <button
             className="btn btn-secondary"
             onClick={() => {
@@ -255,6 +283,13 @@ function Students() {
             <table>
               <thead>
                 <tr>
+                  {canBulkDelete && (
+                    <th style={{ width: 36 }}>
+                      <input type="checkbox" checked={allSelected}
+                        disabled={students.length === 0}
+                        onChange={toggleSelectAll} title="Tout sélectionner" />
+                    </th>
+                  )}
                   <th style={{ width: 48 }}>Photo</th>
                   <th>Matricule</th>
                   <th>Nom & Prénom</th>
@@ -267,9 +302,15 @@ function Students() {
               </thead>
               <tbody>
                 {students.length === 0 ? (
-                  <tr><td colSpan="8" style={{ textAlign: 'center', padding: 40, color: '#98a2b3' }}>Aucun élève trouvé</td></tr>
+                  <tr><td colSpan={canBulkDelete ? 9 : 8} style={{ textAlign: 'center', padding: 40, color: '#98a2b3' }}>Aucun élève trouvé</td></tr>
                 ) : students.map(s => (
-                  <tr key={s.id}>
+                  <tr key={s.id} style={selectedIds.includes(s.id) ? { background: '#fef3f2' } : undefined}>
+                    {canBulkDelete && (
+                      <td>
+                        <input type="checkbox" checked={selectedIds.includes(s.id)}
+                          onChange={() => toggleSelect(s.id)} />
+                      </td>
+                    )}
                     <td>
                       {s.photo_url ? (
                         <img src={s.photo_url} alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', border: '2px solid #e2e8f0' }} />
@@ -307,6 +348,16 @@ function Students() {
         <ImportModal
           onClose={() => setShowImport(false)}
           onSuccess={() => { setShowImport(false); fetchStudents(); }}
+        />
+      )}
+
+      {/* ── Confirmation suppression multiple ────────────────────────────── */}
+      {showBulkDelete && (
+        <BulkDeleteConfirm
+          count={selectedIds.length}
+          itemLabel="élève(s)"
+          onCancel={() => setShowBulkDelete(false)}
+          onConfirm={handleBulkDelete}
         />
       )}
 

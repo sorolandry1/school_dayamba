@@ -97,10 +97,6 @@ function Login() {
               Mot de passe oublié ?
             </Link>
           </div>
-
-          <div style={{ marginTop: 24, textAlign: 'center', fontSize: '0.8rem', color: '#98a2b3' }}>
-            Comptes de test : admin / admin123 — directeur / directeur123 — prof_math / prof123 — agent / agent123
-          </div>
         </form>
       </div>
     </div>

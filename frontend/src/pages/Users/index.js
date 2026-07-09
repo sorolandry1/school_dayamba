@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import BulkDeleteConfirm from '../../components/BulkDeleteConfirm';
 import {
   FiPlus, FiSearch, FiEdit2, FiToggleLeft, FiToggleRight,
   FiKey, FiX, FiUser, FiShield, FiBook, FiLink, FiCopy, FiTrash2, FiCheck
@@ -48,6 +49,9 @@ function Users() {
   const [inviteForm, setInviteForm] = useState({ role: 'TEACHER', note: '', expires_in_days: '' });
   const [creatingInvite, setCreatingInvite] = useState(false);
   const [copiedToken, setCopiedToken] = useState(null);
+  // Sélection multiple pour suppression
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [showBulkDelete, setShowBulkDelete] = useState(false);
 
   const inviteLink = (token) => `${window.location.origin}/register/${token}`;
 
@@ -103,6 +107,28 @@ function Users() {
     if (currentUser?.role === 'DIRECTOR' && role === 'ADMIN') return false;
     return true;
   });
+
+  // ── Sélection multiple ────────────────────────────────────────────────
+  // On ne peut sélectionner ni son propre compte, ni un compte hors de portée.
+  const isSelectable = (u) => canActOn(u) && u.id !== currentUser?.id;
+  const selectableUsers = users.filter(isSelectable);
+  const allSelected = selectableUsers.length > 0 && selectedIds.length === selectableUsers.length;
+
+  const toggleSelect = (id) =>
+    setSelectedIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id]);
+  const toggleSelectAll = () =>
+    setSelectedIds(allSelected ? [] : selectableUsers.map(u => u.id));
+
+  const handleBulkDelete = async (password) => {
+    const res = await api.post('/auth/users/bulk_delete/', { ids: selectedIds, password });
+    setShowBulkDelete(false);
+    setSelectedIds([]);
+    fetchUsers();
+    const blocked = res.data?.blocked || [];
+    if (blocked.length) {
+      alert(`${res.data.deleted} compte(s) supprimé(s).\nExclu(s) : ${blocked.join(', ')}.`);
+    }
+  };
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -204,6 +230,11 @@ function Users() {
           <p>{users.length} compte(s) enregistré(s)</p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
+          {selectedIds.length > 0 && (
+            <button className="btn btn-danger" onClick={() => setShowBulkDelete(true)}>
+              <FiTrash2 /> Supprimer ({selectedIds.length})
+            </button>
+          )}
           <button className="btn btn-secondary" onClick={openInviteModal}>
             <FiLink /> Liens d'inscription
           </button>
@@ -251,6 +282,11 @@ function Users() {
             <table>
               <thead>
                 <tr>
+                  <th style={{ width: 36 }}>
+                    <input type="checkbox" checked={allSelected}
+                      disabled={selectableUsers.length === 0}
+                      onChange={toggleSelectAll} title="Tout sélectionner" />
+                  </th>
                   <th>Nom & Prénom</th>
                   <th>Identifiant</th>
                   <th>Rôle</th>
@@ -262,9 +298,15 @@ function Users() {
               </thead>
               <tbody>
                 {users.length === 0 ? (
-                  <tr><td colSpan="7" style={{ textAlign: 'center', padding: 40, color: '#98a2b3' }}>Aucun utilisateur trouvé</td></tr>
+                  <tr><td colSpan="8" style={{ textAlign: 'center', padding: 40, color: '#98a2b3' }}>Aucun utilisateur trouvé</td></tr>
                 ) : users.map(u => (
-                  <tr key={u.id}>
+                  <tr key={u.id} style={selectedIds.includes(u.id) ? { background: '#fef3f2' } : undefined}>
+                    <td>
+                      {isSelectable(u) ? (
+                        <input type="checkbox" checked={selectedIds.includes(u.id)}
+                          onChange={() => toggleSelect(u.id)} />
+                      ) : null}
+                    </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <div style={{
@@ -593,6 +635,16 @@ function Users() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Confirmation suppression multiple */}
+      {showBulkDelete && (
+        <BulkDeleteConfirm
+          count={selectedIds.length}
+          itemLabel="compte(s) utilisateur"
+          onCancel={() => setShowBulkDelete(false)}
+          onConfirm={handleBulkDelete}
+        />
       )}
     </div>
   );
