@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { FiPlus, FiEdit2, FiTrash2, FiSave, FiDownload } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiSave, FiDownload, FiUpload } from 'react-icons/fi';
 import { downloadFile } from '../../utils/downloadPdf';
 
 function GradesManagement() {
@@ -30,12 +30,20 @@ function GradesManagement() {
   const [showModal, setShowModal] = useState(false);
   const [editingGrade, setEditingGrade] = useState(null);
   const [gradeForm, setGradeForm] = useState({
-    student: '', subject: '', value: '', max_value: '20', type_evaluation: 'Devoir', comment: ''
+    student: '', subject: '', value: '', max_value: '20', period: '1', type_evaluation: 'Devoir', comment: ''
   });
+  const [periodSystem, setPeriodSystem] = useState('TRIMESTER');
+  const periodOptions = (periodSystem === 'SEMESTER'
+    ? [['1', '1er Semestre'], ['2', '2e Semestre']]
+    : [['1', '1er Trimestre'], ['2', '2e Trimestre'], ['3', '3e Trimestre']]);
 
   // Page info from URL
   const classeName = searchParams.get('classe_name') || '';
   const subjectName = searchParams.get('subject_name') || '';
+
+  useEffect(() => {
+    api.get('/reports/platform-settings/').then(r => setPeriodSystem(r.data?.period_system || 'TRIMESTER')).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (isTeacher) {
@@ -110,7 +118,7 @@ function GradesManagement() {
     setEditingGrade(null);
     setGradeForm({
       student: studentId, subject: effectiveSubjectId,
-      value: '', max_value: '20', type_evaluation: 'Devoir', comment: ''
+      value: '', max_value: '20', period: gradeForm.period || '1', type_evaluation: 'Devoir', comment: ''
     });
     setShowModal(true);
   };
@@ -120,6 +128,7 @@ function GradesManagement() {
     setGradeForm({
       student: grade.student, subject: grade.subject,
       value: grade.value, max_value: grade.max_value,
+      period: String(grade.period || '1'),
       type_evaluation: grade.type_evaluation, comment: grade.comment || ''
     });
     setShowModal(true);
@@ -153,12 +162,50 @@ function GradesManagement() {
     if (subj && subj.classe) setSelectedClasse(String(subj.classe));
   };
 
+  const importGrades = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await api.post('/grades/import_grades/', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const { created, errors } = res.data;
+      let msg = `${created} note(s) importée(s).`;
+      if (errors?.length) msg += `\n${errors.length} ligne(s) en erreur :\n` + errors.slice(0, 10).map(x => `Ligne ${x.row}: ${x.message}`).join('\n');
+      alert(msg);
+      fetchData();
+    } catch (err) { alert('Erreur: ' + JSON.stringify(err.response?.data)); }
+  };
+
   return (
     <div>
       <div className="page-header">
         <div>
           <h2>{isTeacher ? 'Gestion des Notes' : 'Notes'}</h2>
           <p>{subjectName && classeName ? `${subjectName} — ${classeName}` : 'Sélectionnez une matière et une classe'}</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {selectedClasse && <>
+            <button className="btn btn-secondary" onClick={() => downloadFile(`/reports/class-roster/${selectedClasse}/`, 'liste_eleves.pdf')}>
+              <FiDownload size={15} /> Liste élèves
+            </button>
+            <button className="btn btn-secondary" onClick={() => downloadFile(`/reports/timetable/${selectedClasse}/`, 'emploi_du_temps.pdf')}>
+              <FiDownload size={15} /> Emploi du temps
+            </button>
+          </>}
+          <button className="btn btn-secondary" onClick={() => downloadFile(`/reports/export/?type=grades${selectedClasse ? `&classe_id=${selectedClasse}` : ''}`, 'notes.xlsx')}>
+            <FiDownload size={15} /> Exporter
+          </button>
+          {canEdit && <>
+            <button className="btn btn-secondary" onClick={() => downloadFile('/grades/import_template/', 'modele_import_notes.xlsx')}>
+              <FiDownload size={15} /> Modèle
+            </button>
+            <label className="btn btn-secondary" style={{ cursor: 'pointer', margin: 0 }}>
+              <FiUpload size={15} /> Importer
+              <input type="file" accept=".xlsx,.csv" hidden onChange={importGrades} />
+            </label>
+          </>}
         </div>
       </div>
 
@@ -310,6 +357,13 @@ function GradesManagement() {
                       value={gradeForm.max_value}
                       onChange={e => setGradeForm({...gradeForm, max_value: e.target.value})} />
                   </div>
+                </div>
+                <div className="form-group">
+                  <label>Période</label>
+                  <select className="form-control" value={gradeForm.period}
+                    onChange={e => setGradeForm({...gradeForm, period: e.target.value})}>
+                    {periodOptions.map(([v, lbl]) => <option key={v} value={v}>{lbl}</option>)}
+                  </select>
                 </div>
                 <div className="form-group">
                   <label>Type d'évaluation</label>

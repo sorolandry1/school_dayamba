@@ -56,6 +56,9 @@ class StudentDetailSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
     classe_name = serializers.CharField(source='classe.name', read_only=True)
     qr_code_url = serializers.SerializerMethodField()
+    tuition_fee = serializers.FloatField(read_only=True)
+    net_tuition = serializers.FloatField(read_only=True)
+    discount_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = Student
@@ -68,10 +71,14 @@ class StudentDetailSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.qr_code.url)
         return None
 
+    def get_discount_amount(self, obj):
+        return obj.discount_amount()
+
 
 class StudentCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Student
         fields = ['first_name', 'last_name', 'date_of_birth', 'birth_place',
                   'nationality', 'gender', 'classe', 'parent_name', 'parent_phone',
-                  'parent_email', 'address', 'photo']
+                  'parent_email', 'address', 'photo',
+                  'discount_type', 'discount_value', 'discount_reason']

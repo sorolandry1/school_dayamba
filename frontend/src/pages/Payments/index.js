@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
-import { FiPlus, FiSearch, FiDollarSign, FiEdit2, FiTrash2, FiPrinter } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiDollarSign, FiEdit2, FiTrash2, FiPrinter, FiLayers } from 'react-icons/fi';
 
 const emptyForm = {
   student: '', amount: '', payment_type: 'SCOLARITE',
@@ -24,6 +24,9 @@ function Payments() {
   const [form, setForm] = useState(emptyForm);
   const [studentSearch, setStudentSearch] = useState('');
   const [showStudentDropdown, setShowStudentDropdown] = useState(false);
+  const [pension, setPension] = useState(null);      // situation pension chargée
+  const [pensionLoading, setPensionLoading] = useState(false);
+  const [showPension, setShowPension] = useState(false);
 
   const fetchPayments = useCallback(async () => {
     try {
@@ -152,6 +155,26 @@ function Payments() {
     w.print();
   };
 
+  const openPension = async (p) => {
+    if (!p.student) { alert('Aucun élève associé à ce paiement.'); return; }
+    setShowPension(true);
+    setPension(null);
+    setPensionLoading(true);
+    try {
+      const res = await api.get(`/payments/pension/?student_id=${p.student}`);
+      setPension(res.data);
+    } catch (e) {
+      setPension({ error: true });
+    } finally { setPensionLoading(false); }
+  };
+
+  const trancheStatusBadge = (t) => {
+    if (t.status === 'PAID') return <span className="badge badge-success">Soldée</span>;
+    if (t.status === 'PARTIAL') return <span className="badge badge-info">Partielle</span>;
+    if (t.overdue) return <span className="badge badge-danger">En retard</span>;
+    return <span className="badge badge-warning">À venir</span>;
+  };
+
   const statusBadge = (status) => {
     const map = { PAID: 'badge-success', PENDING: 'badge-warning', OVERDUE: 'badge-danger', PARTIAL: 'badge-info' };
     const labels = { PAID: 'Payé', PENDING: 'En attente', OVERDUE: 'En retard', PARTIAL: 'Partiel' };
@@ -241,6 +264,7 @@ function Payments() {
                     <td>{statusBadge(p.status)}</td>
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
+                        <button className="btn btn-sm btn-secondary" title="Situation pension" onClick={() => openPension(p)}><FiLayers size={14} /></button>
                         <button className="btn btn-sm btn-secondary" title="Imprimer reçu" onClick={() => printReceipt(p)}><FiPrinter size={14} /></button>
                         <button className="btn btn-sm btn-secondary" title="Modifier" onClick={() => openEdit(p)}><FiEdit2 size={14} /></button>
                         <button className="btn btn-sm btn-danger" title="Supprimer" onClick={() => handleDelete(p.id)}><FiTrash2 size={14} /></button>
@@ -253,6 +277,80 @@ function Payments() {
           )}
         </div>
       </div>
+
+      {showPension && (
+        <div className="modal-overlay" onClick={() => setShowPension(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Situation de pension {pension?.student_name ? `— ${pension.student_name}` : ''}</h3>
+              <button className="btn-icon" onClick={() => setShowPension(false)}>&times;</button>
+            </div>
+            <div className="modal-body">
+              {pensionLoading ? (
+                <div className="loading-container"><div className="spinner" /></div>
+              ) : !pension || pension.error ? (
+                <div style={{ textAlign: 'center', padding: 30, color: '#98a2b3' }}>Impossible de charger la situation.</div>
+              ) : (
+                <>
+                  {(() => {
+                    const rowStyle = { display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f1f5f9' };
+                    const labelStyle = { color: '#718096', fontSize: '0.85rem' };
+                    const valStyle = { fontWeight: 700, fontSize: '0.85rem' };
+                    return (
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={rowStyle}><span style={labelStyle}>Classe</span><span style={valStyle}>{pension.classe_name || '—'}</span></div>
+                        <div style={rowStyle}><span style={labelStyle}>Scolarité</span><span style={valStyle}>{Number(pension.tuition).toLocaleString('fr-FR')} FCFA</span></div>
+                        {pension.discount_amount > 0 && (
+                          <>
+                            <div style={rowStyle}><span style={labelStyle}>Remise{pension.discount_reason ? ` (${pension.discount_reason})` : ''}</span><span style={{ ...valStyle, color: '#276749' }}>- {Number(pension.discount_amount).toLocaleString('fr-FR')} FCFA</span></div>
+                            <div style={rowStyle}><span style={labelStyle}>Net à payer</span><span style={valStyle}>{Number(pension.net_due).toLocaleString('fr-FR')} FCFA</span></div>
+                          </>
+                        )}
+                        <div style={rowStyle}><span style={labelStyle}>Total versé</span><span style={valStyle}>{Number(pension.total_paid).toLocaleString('fr-FR')} FCFA</span></div>
+                        <div style={rowStyle}><span style={labelStyle}>Reste à payer</span><span style={{ ...valStyle, color: pension.reste > 0 ? '#c53030' : '#276749' }}>{Number(pension.reste).toLocaleString('fr-FR')} FCFA</span></div>
+                      </div>
+                    );
+                  })()}
+
+                  {pension.tranches && pension.tranches.length > 0 ? (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--gray-50, #f8fafc)', textAlign: 'left' }}>
+                          <th style={{ padding: '8px' }}>Tranche</th>
+                          <th style={{ padding: '8px' }}>Dû</th>
+                          <th style={{ padding: '8px' }}>Payé</th>
+                          <th style={{ padding: '8px' }}>Reste</th>
+                          <th style={{ padding: '8px' }}>Échéance</th>
+                          <th style={{ padding: '8px' }}>État</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pension.tranches.map(t => (
+                          <tr key={t.id} style={{ borderTop: '1px solid #eef0f4' }}>
+                            <td style={{ padding: '8px', fontWeight: 600 }}>{t.label}</td>
+                            <td style={{ padding: '8px' }}>{Number(t.effective_amount).toLocaleString('fr-FR')}</td>
+                            <td style={{ padding: '8px' }}>{Number(t.allocated).toLocaleString('fr-FR')}</td>
+                            <td style={{ padding: '8px' }}>{Number(t.remaining).toLocaleString('fr-FR')}</td>
+                            <td style={{ padding: '8px' }}>{t.due_date ? new Date(t.due_date).toLocaleDateString('fr-FR') : '—'}</td>
+                            <td style={{ padding: '8px' }}>{trancheStatusBadge(t)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: 20, color: '#98a2b3', fontSize: '0.85rem' }}>
+                      Aucune tranche définie pour cette classe. Définissez l'échéancier depuis la page Classes.
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setShowPension(false)}>Fermer</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>

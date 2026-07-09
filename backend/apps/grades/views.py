@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.exceptions import PermissionDenied
 from django.db.models import Avg, Count
 from apps.users.permissions import CanEditGrades
@@ -19,7 +20,7 @@ class GradeViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
         'student', 'subject', 'subject__classe', 'created_by'
     ).all()
     permission_classes = [CanEditGrades]
-    filterset_fields = ['student', 'subject', 'type_evaluation', 'subject__classe']
+    filterset_fields = ['student', 'subject', 'type_evaluation', 'subject__classe', 'period']
     search_fields = ['student__first_name', 'student__last_name']
     ordering_fields = ['date', 'value']
 
@@ -96,6 +97,98 @@ class GradeViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
         )
 
     @action(detail=False, methods=['get'])
+    def import_template(self, request):
+        """Modèle Excel d'import de notes (matricule, matière, note, sur, période, type)."""
+        import io
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from django.http import HttpResponse
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Notes'
+        headers = ['matricule', 'matiere', 'note', 'sur', 'periode', 'type']
+        for i, h in enumerate(headers, 1):
+            c = ws.cell(row=1, column=i, value=h.upper())
+            c.font = Font(bold=True, color='FFFFFF')
+            c.fill = PatternFill('solid', fgColor='1E40AF')
+            c.alignment = Alignment(horizontal='center')
+        ws.append(['ELV-XXXX', 'Mathématiques', 15, 20, 1, 'Devoir'])
+        for i, w in enumerate([18, 22, 8, 8, 10, 16], 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+        buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+        resp = HttpResponse(buf, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        resp['Content-Disposition'] = 'attachment; filename="modele_import_notes.xlsx"'
+        return resp
+
+    @action(detail=False, methods=['post'],
+            parser_classes=[MultiPartParser, FormParser])
+    def import_grades(self, request):
+        """Import de notes depuis un fichier .xlsx/.csv.
+
+        Colonnes : matricule, matiere, note, sur (déf. 20), periode (déf. 1),
+        type (déf. Devoir). Les élèves sont retrouvés par matricule et les
+        matières par nom dans la classe de l'élève."""
+        from apps.students.views import _parse_file
+        from apps.students.models import Student
+        from apps.subjects.models import Subject
+
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'error': 'Aucun fichier fourni.'}, status=400)
+        ext = file.name.rsplit('.', 1)[-1].lower()
+        if ext not in ('xlsx', 'csv'):
+            return Response({'error': 'Format non supporté (.xlsx ou .csv).'}, status=400)
+        try:
+            rows = _parse_file(file, ext)
+        except Exception as exc:
+            return Response({'error': f'Erreur de lecture: {exc}'}, status=400)
+
+        eid = None
+        u = request.user
+        if u.role != 'ADMIN':
+            eid = getattr(u, 'ecole_id', None)
+
+        created, errors = 0, []
+        for n, row in enumerate(rows, start=2):
+            row = {k.strip().lower(): (str(v).strip() if v is not None else '') for k, v in row.items()}
+            mat = row.get('matricule', '')
+            subj_name = row.get('matiere') or row.get('matière', '')
+            note = row.get('note', '')
+            if not mat or not subj_name or note == '':
+                errors.append({'row': n, 'message': 'matricule, matiere et note requis'})
+                continue
+            students = Student.objects.filter(matricule__iexact=mat)
+            if eid:
+                students = students.filter(ecole_id=eid)
+            student = students.first()
+            if not student:
+                errors.append({'row': n, 'message': f'Élève introuvable: {mat}'})
+                continue
+            subject = Subject.objects.filter(classe=student.classe, name__iexact=subj_name).first()
+            if not subject:
+                errors.append({'row': n, 'message': f'Matière introuvable dans la classe: {subj_name}'})
+                continue
+            try:
+                value = float(str(note).replace(',', '.'))
+                max_value = float(str(row.get('sur') or 20).replace(',', '.'))
+                period = int(row.get('periode') or 1)
+            except ValueError:
+                errors.append({'row': n, 'message': 'Valeurs numériques invalides'})
+                continue
+            if value < 0 or value > max_value:
+                errors.append({'row': n, 'message': f'Note hors bornes (0..{max_value:g})'})
+                continue
+            self._check_teacher_owns_subject(subject.id)
+            Grade.objects.create(
+                student=student, subject=subject, value=value, max_value=max_value,
+                period=period, type_evaluation=(row.get('type') or 'Devoir'),
+                created_by=request.user,
+            )
+            created += 1
+
+        return Response({'created': created, 'errors': errors, 'total': created + len(errors)})
+
+    @action(detail=False, methods=['get'])
     def by_subject_class(self, request):
         """Get grades filtered by subject and class."""
         subject_id = request.query_params.get('subject_id')
@@ -148,6 +241,12 @@ class GradeViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
         from apps.subjects.models import Subject
         from apps.students.models import Student
 
+        period = request.query_params.get('period')
+        try:
+            period = int(period) if period not in (None, '', 'annual') else None
+        except (ValueError, TypeError):
+            period = None
+
         students = Student.objects.filter(classe_id=classe_id, is_active=True)
         subjects = Subject.objects.filter(classe_id=classe_id)
 
@@ -158,6 +257,8 @@ class GradeViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
             subject_averages = []
             for subject in subjects:
                 grades = Grade.objects.filter(student=student, subject=subject)
+                if period:
+                    grades = grades.filter(period=period)
                 if grades.exists():
                     avg = grades.aggregate(avg=Avg('value'))['avg']
                     coeff = float(subject.coefficient)

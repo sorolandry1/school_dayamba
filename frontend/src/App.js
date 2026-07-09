@@ -38,6 +38,8 @@ import AcademicYears from './pages/AcademicYears';
 import Timetable from './pages/Timetable';
 import Accounting from './pages/Accounting';
 import Schools from './pages/Schools';
+import Payroll from './pages/Payroll';
+import Establishment from './pages/Establishment';
 
 function ProtectedRoute({ children, allowedRoles }) {
   const { user, isAuthenticated } = useAuth();
@@ -94,6 +96,7 @@ function AppRoutes() {
         <Route path="/student-cards" element={<StudentCards />} />
         <Route path="/super-admin" element={<SuperAdmin />} />
         <Route path="/schools" element={<Schools />} />
+        <Route path="/etablissement" element={<Establishment />} />
         <Route path="/document-editor" element={<DocumentEditor />} />
       </Route>
 
@@ -124,6 +127,7 @@ function AppRoutes() {
         <Route path="/payments" element={<Payments />} />
         <Route path="/expenses" element={<Expenses />} />
         <Route path="/accounting" element={<Accounting />} />
+        <Route path="/payroll" element={<Payroll />} />
       </Route>
 
       {/* Teacher routes */}

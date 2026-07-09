@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../../services/api';
 import { FiPlus, FiTrash2, FiClock, FiX, FiMapPin, FiUpload, FiFileText, FiDownload } from 'react-icons/fi';
+import { downloadFile } from '../../utils/downloadPdf';
 
 const DAYS = [[0, 'Lundi'], [1, 'Mardi'], [2, 'Mercredi'], [3, 'Jeudi'], [4, 'Vendredi'], [5, 'Samedi']];
 const empty = { subject: '', subject_name: '', room: '', day: 0, start_time: '08:00', end_time: '09:00' };
@@ -137,6 +138,11 @@ function Timetable() {
           <option value="">Choisir une classe</option>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
+        {selectedClasse && (
+          <button className="btn btn-secondary" onClick={() => downloadFile(`/reports/timetable/${selectedClasse}/`, `emploi_du_temps_${classeName}.pdf`)}>
+            <FiDownload size={15} /> Télécharger (PDF)
+          </button>
+        )}
       </div>
 
       {selectedClasse && (

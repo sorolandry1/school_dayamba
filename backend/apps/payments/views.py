@@ -90,6 +90,24 @@ class PaymentViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
             'total_paid': total,
         })
 
+    @action(detail=False, methods=['get'])
+    def pension(self, request):
+        """Situation de pension d'un élève : échéancier, remise, répartition
+        automatique des versements sur les tranches et reste à payer."""
+        from apps.students.models import Student
+        from .pension import build_pension_situation
+        student_id = request.query_params.get('student_id')
+        if not student_id:
+            return Response({'error': 'student_id requis'}, status=400)
+        try:
+            student = Student.objects.select_related('classe').get(id=student_id)
+        except Student.DoesNotExist:
+            return Response({'error': 'Élève non trouvé.'}, status=404)
+        eid = _ecole_id(request)
+        if eid and student.ecole_id and student.ecole_id != eid:
+            return Response({'error': 'Élève non trouvé.'}, status=404)
+        return Response(build_pension_situation(student))
+
 
 class ExpenseViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
     queryset = Expense.objects.select_related('recorded_by').all()

@@ -3,6 +3,11 @@ import api from '../../services/api';
 import { downloadFile } from '../../utils/downloadPdf';
 import { FiDownload, FiAward, FiFileText } from 'react-icons/fi';
 
+const PERIOD_LABELS = {
+  TRIMESTER: [['1', '1er Trimestre'], ['2', '2e Trimestre'], ['3', '3e Trimestre']],
+  SEMESTER: [['1', '1er Semestre'], ['2', '2e Semestre']],
+};
+
 function Bulletins() {
   const [classes, setClasses] = useState([]);
   const [selectedClasse, setSelectedClasse] = useState('');
@@ -10,16 +15,21 @@ function Bulletins() {
   const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [expandedStudent, setExpandedStudent] = useState(null);
+  const [period, setPeriod] = useState('annual');
+  const [periodSystem, setPeriodSystem] = useState('TRIMESTER');
+
+  const periodOptions = [...(PERIOD_LABELS[periodSystem] || PERIOD_LABELS.TRIMESTER), ['annual', 'Année (annuel)']];
 
   useEffect(() => {
     api.get('/classes/current_year/').then(r => setClasses(r.data.results || r.data)).catch(() => {});
+    api.get('/reports/platform-settings/').then(r => setPeriodSystem(r.data?.period_system || 'TRIMESTER')).catch(() => {});
   }, []);
 
   useEffect(() => {
     if (!selectedClasse) { setRankings([]); setSubjects([]); return; }
     setLoading(true);
     Promise.all([
-      api.get(`/grades/ranking/?classe_id=${selectedClasse}`),
+      api.get(`/grades/ranking/?classe_id=${selectedClasse}&period=${period}`),
       api.get(`/subjects/?classe=${selectedClasse}`),
     ])
       .then(([rankRes, subjRes]) => {
@@ -35,15 +45,17 @@ function Bulletins() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [selectedClasse]);
+  }, [selectedClasse, period]);
+
+  const periodLabel = (periodOptions.find(([v]) => v === period) || [])[1] || 'Annuel';
 
   const downloadBulletin = (studentId, studentName, e) => {
     e.stopPropagation();
-    downloadFile(`/reports/bulletin/${studentId}/`, `bulletin_${studentName}.pdf`);
+    downloadFile(`/reports/bulletin/${studentId}/?period=${period}`, `bulletin_${studentName}_${period}.pdf`);
   };
 
   const downloadBulletinsClasse = () => {
-    downloadFile(`/reports/bulletin/classe/${selectedClasse}/`, `bulletins_${classeName}.zip`);
+    downloadFile(`/reports/bulletin/classe/${selectedClasse}/?period=${period}`, `bulletins_${classeName}_${period}.zip`);
   };
 
   const getSubjectAvg = (student, subjectName) => {
@@ -87,6 +99,15 @@ function Bulletins() {
           <option value="">Sélectionner une classe</option>
           {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
+        <select
+          className="form-control"
+          style={{ width: 180 }}
+          value={period}
+          onChange={e => setPeriod(e.target.value)}
+          title="Période du bulletin"
+        >
+          {periodOptions.map(([v, lbl]) => <option key={v} value={v}>{lbl}</option>)}
+        </select>
         {selectedClasse && rankings.length > 0 && (
           <button className="btn btn-primary" onClick={downloadBulletinsClasse}>
             <FiDownload size={15} /> Télécharger tous les bulletins (ZIP)
@@ -115,7 +136,7 @@ function Bulletins() {
           <div className="card" style={{ marginBottom: 24 }}>
             <div className="card-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <FiAward size={18} />
-              <h3>Classement — {classeName} — {rankings.length} élèves</h3>
+              <h3>Classement — {classeName} — {periodLabel} — {rankings.length} élèves</h3>
             </div>
             <div className="table-container" style={{ overflowX: 'auto' }}>
               <table>

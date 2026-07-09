@@ -1,0 +1,53 @@
+SchoolPro — Deploiement local (poste serveur Windows)
+=====================================================
+
+1) INSTALLATION
+   - Choisissez un dossier sur le poste serveur, par ex.  C:\SchoolPro
+   - Copiez-y :
+       * SchoolPro.exe                     (l'application)
+       * installer-demarrage-auto.bat      (ces scripts)
+       * desinstaller-demarrage-auto.bat
+   - Double-cliquez sur SchoolPro.exe pour un premier lancement.
+     -> La base de donnees est creee dans le sous-dossier  SchoolPro_data\
+     -> Le navigateur s'ouvre sur http://localhost:5006
+
+   - Pour un lancement rapide, creez un raccourci sur le Bureau :
+     double-cliquez sur  creer-raccourci-bureau.bat
+
+2) DEMARRAGE AUTOMATIQUE — deux modes au choix
+
+   MODE A — au BOOT (recommande pour un serveur dedie)
+   - Clic droit sur  installer-demarrage-auto.bat
+     -> "Executer en tant qu'administrateur"
+   - SchoolPro demarre a chaque demarrage de Windows, meme AVANT
+     l'ouverture de session. Le navigateur ne s'ouvre pas tout seul
+     (serveur en arriere-plan) ; ouvrez http://localhost:5006.
+   - Desactiver : desinstaller-demarrage-auto.bat (en administrateur).
+
+   MODE B — a l'OUVERTURE DE SESSION (ouvre aussi le navigateur)
+   - Double-cliquez sur  demarrage-session-activer.bat  (sans admin).
+   - SchoolPro se lance ET le navigateur s'ouvre a chaque connexion
+     de cet utilisateur.
+   - Desactiver : demarrage-session-desactiver.bat
+
+   (Vous pouvez utiliser le mode A OU le mode B ; inutile d'activer les deux.)
+
+3) ACCES DEPUIS LES AUTRES POSTES (reseau local)
+   - Sur ce poste            : http://localhost:5006
+   - Sur les postes clients   : http://IP-DU-SERVEUR:5006
+   - Ouvrez les ports 5006 dans le pare-feu Windows (PowerShell admin) :
+       New-NetFirewallRule -DisplayName "SchoolPro" -Direction Inbound -LocalPort 5006 -Protocol TCP -Action Allow
+
+4) PRE-REQUIS RESEAU
+   - IP statique conseillee sur le poste serveur.
+   - Poste serveur allume en permanence.
+
+5) SAUVEGARDE
+   - Tout est dans le dossier  SchoolPro_data\  (a cote de l'exe).
+   - Copiez ce dossier regulierement pour sauvegarder.
+   - Ou via l'application : Super Admin > Systeme > Sauvegarde.
+
+6) LICENCE
+   - Essai gratuit de 28 jours au premier lancement.
+   - Renouvellement : l'ecole paie par Mobile Money, l'editeur fournit un
+     code d'activation a saisir dans  Parametres etablissement > Licence.

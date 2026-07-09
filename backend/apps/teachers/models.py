@@ -12,6 +12,8 @@ class Teacher(models.Model):
     phone = models.CharField(max_length=20, blank=True, default='')
     speciality = models.CharField(max_length=100, blank=True, default='')
     hire_date = models.DateField(null=True, blank=True)
+    # Salaire de base mensuel (sert de valeur par défaut à la paie)
+    base_salary = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     # Classes attribuées au professeur par le directeur ou l'éducateur
     classes = models.ManyToManyField(
         'classes.Classe', related_name='teachers', blank=True

@@ -5,6 +5,8 @@ from .views import (
     ClassStatsView, DocumentTemplateListCreateView, DocumentTemplateDetailView,
     ReceiptPDFView, StudentCardPDFView, PlatformSettingsView, ClassListPDFView,
     SubjectSheetPDFView, ChartsView, AccountingView, AccountingExportView,
+    StudentSheetPDFView, BackupView, RestoreView,
+    ClassRosterPDFView, TimetablePDFView, TeacherTimetablePDFView,
 )
 
 urlpatterns = [
@@ -28,4 +30,12 @@ urlpatterns = [
     # Document PDFs with template
     path('receipt/<int:payment_id>/', ReceiptPDFView.as_view(), name='receipt_pdf'),
     path('card/<int:student_id>/', StudentCardPDFView.as_view(), name='card_pdf'),
+    path('student-sheet/<int:student_id>/', StudentSheetPDFView.as_view(), name='student_sheet_pdf'),
+    path('class-roster/<int:classe_id>/', ClassRosterPDFView.as_view(), name='class_roster_pdf'),
+    path('timetable/<int:classe_id>/', TimetablePDFView.as_view(), name='timetable_pdf'),
+    path('teacher-timetable/', TeacherTimetablePDFView.as_view(), name='teacher_timetable_pdf'),
+    path('teacher-timetable/<int:teacher_id>/', TeacherTimetablePDFView.as_view(), name='teacher_timetable_pdf_id'),
+    # Sauvegarde / restauration (ADMIN)
+    path('backup/', BackupView.as_view(), name='backup'),
+    path('restore/', RestoreView.as_view(), name='restore'),
 ]

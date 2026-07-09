@@ -1,11 +1,141 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
+import { downloadFile } from '../../utils/downloadPdf';
 import {
   FiUsers, FiPrinter, FiBook, FiGrid,
-  FiAward, FiAlertCircle, FiPlus, FiX, FiTrash2, FiLock, FiDollarSign
+  FiAward, FiAlertCircle, FiPlus, FiX, FiTrash2, FiLock, FiDollarSign, FiDownload, FiClock
 } from 'react-icons/fi';
 
 const LEVELS = ['6ème', '5ème', '4ème', '3ème', '2nde', '1ère', 'Terminale'];
+
+const fcfa = (n) => `${Number(n || 0).toLocaleString('fr-FR')} FCFA`;
+
+// Gestion de l'échéancier de pension (tranches) d'une classe.
+function TranchesManager({ classeId, tuition }) {
+  const [tranches, setTranches] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ label: '', amount: '', due_date: '' });
+  const [saving, setSaving] = useState(false);
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    api.get(`/classes/tranches/?classe=${classeId}`)
+      .then(r => setTranches(r.data.results || r.data))
+      .catch(() => setTranches([]))
+      .finally(() => setLoading(false));
+  }, [classeId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const total = tranches.reduce((s, t) => s + Number(t.amount || 0), 0);
+  const diff = Number(tuition || 0) - total;
+
+  const addTranche = async (e) => {
+    e.preventDefault();
+    if (!form.label || !form.amount) return;
+    setSaving(true);
+    try {
+      await api.post('/classes/tranches/', {
+        classe: classeId,
+        label: form.label,
+        amount: Number(form.amount) || 0,
+        due_date: form.due_date || null,
+        order: tranches.length + 1,
+      });
+      setForm({ label: '', amount: '', due_date: '' });
+      load();
+    } catch (err) {
+      alert('Erreur: ' + JSON.stringify(err.response?.data));
+    } finally { setSaving(false); }
+  };
+
+  const removeTranche = async (id) => {
+    if (!window.confirm('Supprimer cette tranche ?')) return;
+    await api.delete(`/classes/tranches/${id}/`);
+    load();
+  };
+
+  return (
+    <div style={{ padding: '12px 20px', background: '#fff', borderBottom: '1px solid var(--gray-200)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <FiDollarSign size={15} color="#667085" />
+        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#344054' }}>
+          Tranches de pension (échéancier)
+        </span>
+        <span style={{ fontSize: '0.78rem', color: '#98a2b3' }}>
+          — répartition automatique des versements
+        </span>
+      </div>
+
+      {loading ? (
+        <div style={{ color: '#98a2b3', fontSize: '0.85rem', padding: '6px 0' }}>Chargement…</div>
+      ) : (
+        <>
+          {tranches.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 8, fontSize: '0.83rem' }}>
+              <thead>
+                <tr style={{ background: 'var(--gray-50)', textAlign: 'left' }}>
+                  <th style={{ padding: '6px 8px' }}>Tranche</th>
+                  <th style={{ padding: '6px 8px' }}>Montant</th>
+                  <th style={{ padding: '6px 8px' }}>Échéance</th>
+                  <th style={{ padding: '6px 8px', width: 40 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {tranches.map(t => (
+                  <tr key={t.id} style={{ borderTop: '1px solid var(--gray-100)' }}>
+                    <td style={{ padding: '6px 8px', fontWeight: 600 }}>{t.label}</td>
+                    <td style={{ padding: '6px 8px' }}>{fcfa(t.amount)}</td>
+                    <td style={{ padding: '6px 8px' }}>{t.due_date ? new Date(t.due_date).toLocaleDateString('fr-FR') : '—'}</td>
+                    <td style={{ padding: '6px 8px' }}>
+                      <button className="btn btn-sm btn-danger" title="Supprimer" onClick={() => removeTranche(t.id)}>
+                        <FiTrash2 size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {tranches.length > 0 && (
+            <div style={{
+              fontSize: '0.8rem', marginBottom: 8,
+              color: Math.abs(diff) < 0.5 ? '#276749' : '#b45309',
+            }}>
+              Total tranches : <strong>{fcfa(total)}</strong>
+              {' · '}Scolarité : <strong>{fcfa(tuition)}</strong>
+              {Math.abs(diff) >= 0.5 && (
+                <> {' · '}Écart : <strong>{fcfa(diff)}</strong> (le total des tranches devrait égaler la scolarité)</>
+              )}
+            </div>
+          )}
+
+          <form onSubmit={addTranche} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div className="form-group" style={{ margin: 0, flex: '1 1 160px' }}>
+              <label style={{ fontSize: '0.75rem' }}>Libellé</label>
+              <input className="form-control" placeholder="ex: Inscription" value={form.label}
+                onChange={e => setForm({ ...form, label: e.target.value })} />
+            </div>
+            <div className="form-group" style={{ margin: 0, flex: '0 1 140px' }}>
+              <label style={{ fontSize: '0.75rem' }}>Montant (FCFA)</label>
+              <input type="number" min={0} step={1000} className="form-control" value={form.amount}
+                onChange={e => setForm({ ...form, amount: e.target.value })} />
+            </div>
+            <div className="form-group" style={{ margin: 0, flex: '0 1 160px' }}>
+              <label style={{ fontSize: '0.75rem' }}>Échéance</label>
+              <input type="date" className="form-control" value={form.due_date}
+                onChange={e => setForm({ ...form, due_date: e.target.value })} />
+            </div>
+            <button type="submit" className="btn btn-sm btn-primary" disabled={saving} style={{ height: 38 }}>
+              <FiPlus size={13} /> {saving ? '...' : 'Ajouter'}
+            </button>
+          </form>
+        </>
+      )}
+    </div>
+  );
+}
 
 const LEVEL_COLORS = {
   '6ème':      { bg: 'linear-gradient(135deg, #3b5beb, #1e40af)', light: '#eff6ff', badge: '#1d4ed8' },
@@ -523,6 +653,21 @@ export default function Classes() {
                       </div>
                     </div>
 
+                    {/* Documents de la classe */}
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                      padding: '10px 20px', background: '#fff', borderBottom: '1px solid var(--gray-200)',
+                    }}>
+                      <button className="btn btn-sm btn-secondary"
+                        onClick={() => downloadFile(`/reports/class-roster/${selectedClasse.id}/`, `liste_eleves_${selectedClasse.name}.pdf`)}>
+                        <FiDownload size={13} /> Liste des élèves (PDF)
+                      </button>
+                      <button className="btn btn-sm btn-secondary"
+                        onClick={() => downloadFile(`/reports/timetable/${selectedClasse.id}/`, `emploi_du_temps_${selectedClasse.name}.pdf`)}>
+                        <FiClock size={13} /> Emploi du temps (PDF)
+                      </button>
+                    </div>
+
                     {/* Frais de scolarité de la classe (modifiable) */}
                     <div style={{
                       display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
@@ -541,6 +686,12 @@ export default function Classes() {
                         (apparaît sur les reçus : total, reste à payer)
                       </span>
                     </div>
+
+                    <TranchesManager
+                      key={selectedClasse.id}
+                      classeId={selectedClasse.id}
+                      tuition={Number(tuitionInput) || Number(selectedClasse.tuition_fee) || 0}
+                    />
 
                     {loadingStudents ? (
                       <div style={{ padding: 32, textAlign: 'center', color: 'var(--gray-400)' }}>

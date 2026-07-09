@@ -3,6 +3,7 @@ import { initReactI18next } from 'react-i18next';
 
 import frTranslation from './locales/fr/translation.json';
 import mosTranslation from './locales/mos/translation.json';
+import enTranslation from './locales/en/translation.json';
 
 i18n
   .use(initReactI18next)
@@ -10,6 +11,7 @@ i18n
     resources: {
       fr: { translation: frTranslation },
       mos: { translation: mosTranslation },
+      en: { translation: enTranslation },
     },
     lng: localStorage.getItem('lang') || 'fr',
     fallbackLng: 'fr',

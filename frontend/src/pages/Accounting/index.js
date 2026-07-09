@@ -80,6 +80,10 @@ function Accounting() {
           <div className="card-body">
             <Line label="Produits (recettes encaissées)" value={cr.produits} color="#10b981" />
             <Line label="Charges (dépenses)" value={cr.charges} color="#ef4444" />
+            <div style={{ paddingLeft: 16 }}>
+              <Line label="dont salaires" value={cr.charges_salaires} color="#f97316" />
+              <Line label="dont autres dépenses" value={cr.charges_autres} color="#f97316" />
+            </div>
             <Line label={resultPos ? 'Résultat (excédent)' : 'Résultat (déficit)'} value={cr.resultat} bold color={resultPos ? '#059669' : '#dc2626'} />
           </div>
         </div>

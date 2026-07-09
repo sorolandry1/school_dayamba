@@ -31,7 +31,7 @@ class TeacherSerializer(serializers.ModelSerializer):
         model = Teacher
         fields = ['id', 'user', 'username', 'first_name', 'last_name',
                   'email', 'full_name', 'phone', 'speciality', 'hire_date',
-                  'subjects', 'assigned_classes', 'assigned_class_ids']
+                  'base_salary', 'subjects', 'assigned_classes', 'assigned_class_ids']
 
     def get_subjects(self, obj):
         from apps.subjects.serializers import SubjectSerializer

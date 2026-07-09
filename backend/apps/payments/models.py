@@ -81,22 +81,35 @@ class Payment(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.receipt_number:
-            import uuid
-            self.receipt_number = f"REC-{uuid.uuid4().hex[:10].upper()}"
+            from utils.numbering import next_receipt_number
+            ecole = self.ecole or (self.student.ecole if self.student_id else None)
+            self.receipt_number = next_receipt_number(ecole)
         super().save(*args, **kwargs)
         # Update student payment status
         self._update_student_status()
 
     def _update_student_status(self):
+        from django.db.models import Sum
         student = self.student
-        total_paid = sum(
-            p.amount for p in student.payments.filter(status='PAID')
+        net_due = student.net_tuition
+        total_paid = float(
+            student.payments.filter(status__in=['PAID', 'PARTIAL'])
+            .aggregate(t=Sum('amount'))['t'] or 0
         )
-        pending = student.payments.filter(status__in=['PENDING', 'OVERDUE']).exists()
-        if not pending:
-            student.payment_status = 'PAID'
-        elif student.payments.filter(status='OVERDUE').exists():
-            student.payment_status = 'OVERDUE'
+        # Si une scolarité nette est connue, on se base sur le solde réel.
+        if net_due > 0:
+            if total_paid >= net_due:
+                student.payment_status = 'PAID'
+            elif student.payments.filter(status='OVERDUE').exists():
+                student.payment_status = 'OVERDUE'
+            else:
+                student.payment_status = 'PENDING'
         else:
-            student.payment_status = 'PENDING'
+            pending = student.payments.filter(status__in=['PENDING', 'OVERDUE']).exists()
+            if not pending:
+                student.payment_status = 'PAID'
+            elif student.payments.filter(status='OVERDUE').exists():
+                student.payment_status = 'OVERDUE'
+            else:
+                student.payment_status = 'PENDING'
         student.save(update_fields=['payment_status'])

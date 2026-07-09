@@ -1,9 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
-import { FiCamera, FiCheck, FiX, FiClock, FiUser, FiStopCircle } from 'react-icons/fi';
+import { useAuth } from '../../context/AuthContext';
+import { FiCamera, FiCheck, FiX, FiClock, FiUser, FiStopCircle, FiDollarSign, FiFolder } from 'react-icons/fi';
 
 function AttendanceScanner() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const canViewDossier = ['ADMIN', 'DIRECTOR', 'EDUCATEUR'].includes(user?.role);
   const [scanType, setScanType] = useState('IN');
   const [manualCode, setManualCode] = useState('');
   const [result, setResult] = useState(null);
@@ -249,11 +254,46 @@ function AttendanceScanner() {
               </div>
             </div>
             <div style={{
-              background: '#d1fae5', color: '#065f46',
+              background: result.warning ? '#fef3c7' : '#d1fae5',
+              color: result.warning ? '#92400e' : '#065f46',
               padding: '10px 16px', borderRadius: 8, fontWeight: 600, fontSize: '0.9rem'
             }}>
-              {result.message}
+              {result.message || result.warning}
             </div>
+
+            {/* Statut de scolarité (visible par l'agent) */}
+            {result.student?.scolarite && (() => {
+              const sc = result.student.scolarite;
+              const map = {
+                A_JOUR: { bg: '#dcfce7', fg: '#166534', label: 'Scolarité à jour' },
+                EN_RETARD: { bg: '#fee2e2', fg: '#b91c1c', label: 'Scolarité en retard' },
+                EN_COURS: { bg: '#fef3c7', fg: '#92400e', label: 'Reste à payer' },
+              };
+              const s = map[sc.statut] || map.EN_COURS;
+              return (
+                <div style={{
+                  marginTop: 10, background: s.bg, color: s.fg, borderRadius: 8,
+                  padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                }}>
+                  <FiDollarSign size={18} />
+                  <strong>{s.label}</strong>
+                  {sc.reste > 0 && (
+                    <span style={{ fontSize: '0.85rem' }}>
+                      — reste {Number(sc.reste).toLocaleString('fr-FR')} FCFA
+                      {sc.next_due_date ? ` (échéance ${new Date(sc.next_due_date).toLocaleDateString('fr-FR')})` : ''}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Accès au dossier complet (directeur / éducateur) */}
+            {canViewDossier && result.student?.id && (
+              <button className="btn btn-secondary" style={{ marginTop: 12 }}
+                onClick={() => navigate(`/students/${result.student.id}`)}>
+                <FiFolder size={15} /> Voir le dossier complet
+              </button>
+            )}
           </div>
         )}
 

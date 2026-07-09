@@ -1,6 +1,19 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api';
+// URL de l'API :
+//  1. REACT_APP_API_URL si défini (override explicite) ;
+//  2. sinon, déduite de l'hôte du navigateur → permet l'accès LAN : un client
+//     sur http://IP-SERVEUR:5006 appelle automatiquement http://IP-SERVEUR:8000/api.
+const API_PORT = process.env.REACT_APP_API_PORT || '8000';
+function resolveApiBaseUrl() {
+  if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    return `${window.location.protocol}//${window.location.hostname}:${API_PORT}/api`;
+  }
+  return 'http://127.0.0.1:8000/api';
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 const api = axios.create({
   baseURL: API_BASE_URL,

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
-import { FiSearch, FiEye, FiX, FiGrid, FiSave } from 'react-icons/fi';
+import { FiSearch, FiEye, FiX, FiGrid, FiSave, FiClock } from 'react-icons/fi';
+import { downloadFile } from '../../utils/downloadPdf';
 
 function Teachers() {
   const [teachers, setTeachers] = useState([]);
@@ -131,6 +132,13 @@ function Teachers() {
                           onClick={() => handleViewProfile(t)}
                         >
                           <FiEye size={14} />
+                        </button>
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          title="Emploi du temps (PDF)"
+                          onClick={() => downloadFile(`/reports/teacher-timetable/${t.id}/`, `emploi_du_temps_${t.last_name}_${t.first_name}.pdf`)}
+                        >
+                          <FiClock size={14} />
                         </button>
                         <button
                           className="btn btn-sm btn-primary"

@@ -1,0 +1,84 @@
+{
+  "app": {
+    "name": "SchoolPro",
+    "tagline": "School Management",
+    "description": "Digital school management platform — Streamline your institution's administration"
+  },
+  "login": {
+    "title": "Sign in",
+    "subtitle": "Access your personal space",
+    "username": "Username",
+    "username_placeholder": "Enter your username",
+    "password": "Password",
+    "password_placeholder": "Enter your password",
+    "submit": "Sign in",
+    "loading": "Signing in...",
+    "error_default": "Invalid credentials.",
+    "stats_students": "Students managed",
+    "stats_teachers": "Teachers",
+    "stats_uptime": "Uptime"
+  },
+  "sidebar": {
+    "sections": {
+      "dashboard": "Dashboard",
+      "etablissement": "Institution",
+      "scolarite": "Academics",
+      "administration": "Administration",
+      "mon_espace": "My space",
+      "pedagogie": "Teaching",
+      "presences": "Attendance"
+    },
+    "links": {
+      "dashboard": "Dashboard",
+      "students": "Students",
+      "teachers": "Teachers",
+      "classes": "Classes",
+      "bulletins": "Report cards",
+      "attendance": "Attendance",
+      "payments": "Finance",
+      "reports": "Reports",
+      "communications": "Communications",
+      "subjects": "Subjects",
+      "users": "Users",
+      "logs": "Activity log",
+      "scan": "QR Scanner",
+      "attendance_today": "Today's attendance",
+      "my_profile": "My profile",
+      "grades": "Grade entry",
+      "lessons": "Lesson log",
+      "student_cards": "Student cards",
+      "expenses": "Expenses",
+      "super_admin": "Super Administrator",
+      "accounting": "Accounting",
+      "analytics": "Analytics",
+      "academic_years": "Academic years",
+      "timetable": "Timetable",
+      "schools": "Institutions",
+      "payroll": "Salaries & Staff",
+      "establishment": "Institution settings"
+    },
+    "logout": "Sign out",
+    "roles": {
+      "DIRECTOR": "Director",
+      "TEACHER": "Teacher",
+      "AGENT": "Front desk agent",
+      "ADMIN": "Administrator"
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "search": "Search",
+    "close": "Close",
+    "back": "Back",
+    "yes": "Yes",
+    "no": "No",
+    "unknown": "—"
+  }
+}

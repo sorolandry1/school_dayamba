@@ -38,7 +38,7 @@ def _platform_settings(ecole=None):
         return None
 
 
-def build_token_context(student=None, rankings_data=None, payment=None, subjects=None, platform_settings=None):
+def build_token_context(student=None, rankings_data=None, payment=None, subjects=None, platform_settings=None, period_label=None):
     """Build a complete token → value map for a given document context."""
     ctx = {}
     if platform_settings is not None:
@@ -76,7 +76,8 @@ def build_token_context(student=None, rankings_data=None, payment=None, subjects
             # On garde l'année du Super-Admin si définie, sinon celle de la classe
             if not ctx.get('{{ANNEE_SCOLAIRE}}'):
                 ctx['{{ANNEE_SCOLAIRE}}'] = yr.name if yr else ''
-            ctx['{{TRIMESTRE}}']       = '1er Trimestre'
+            ctx['{{TRIMESTRE}}']       = period_label or '1er Trimestre'
+            ctx['{{PERIODE}}']         = period_label or '1er Trimestre'
 
             from apps.students.models import Student as _S
             ctx['{{EFFECTIF_CLASSE}}'] = str(_S.objects.filter(classe=student.classe, is_active=True).count())
@@ -109,14 +110,18 @@ def build_token_context(student=None, rankings_data=None, payment=None, subjects
             ctx['{{NOM_PRENOM}}']   = payment.student.full_name
             ctx['{{MATRICULE}}']    = payment.student.matricule
             ctx['{{CLASSE}}']       = payment.student.classe.name if payment.student.classe else ''
-            # Solde : scolarité totale, total payé, reste à payer
+            # Solde : scolarité totale, remise, net dû, total payé, reste à payer
             from django.db.models import Sum as _Sum
             _st = payment.student
-            _tuition = float(_st.classe.tuition_fee or 0) if _st.classe else 0
-            _paid = float(_st.payments.filter(status='PAID').aggregate(t=_Sum('amount'))['t'] or 0)
+            _tuition = _st.tuition_fee
+            _remise = _st.discount_amount(_tuition)
+            _net = _st.net_tuition
+            _paid = float(_st.payments.filter(status__in=['PAID', 'PARTIAL']).aggregate(t=_Sum('amount'))['t'] or 0)
             ctx['{{SCOLARITE_TOTALE}}'] = f'{_tuition:,.0f}'
+            ctx['{{REMISE}}']           = f'{_remise:,.0f}'
+            ctx['{{NET_A_PAYER}}']      = f'{_net:,.0f}'
             ctx['{{TOTAL_PAYE}}']       = f'{_paid:,.0f}'
-            ctx['{{RESTE_A_PAYER}}']    = f'{max(0.0, _tuition - _paid):,.0f}'
+            ctx['{{RESTE_A_PAYER}}']    = f'{max(0.0, _net - _paid):,.0f}'
 
     return ctx
 
@@ -329,11 +334,29 @@ def _c(config, *keys, default='#1a365d'):
     return val if val else default
 
 
-def generate_bulletin_pdf_templated(student, subjects, rankings_data, template_config):
-    """Generate a bulletin PDF using a saved template config."""
+def generate_bulletin_pdf_templated(student, subjects, rankings_data, template_config, extra=None):
+    """Generate a bulletin PDF using a saved template config.
+
+    `extra` (optionnel) porte les données périodiques/annuelles :
+        period      : entier 1..N ou None (annuel) — filtre les notes
+        period_label: libellé de période affiché
+        attendance  : dict d'assiduité (absences horaires)
+        distinction : distinction du conseil de classe
+        decision    : dict décision de fin d'année (annuel uniquement)
+        is_annual   : bool
+    """
     from apps.grades.models import Grade
 
     cfg = template_config or {}
+    extra = extra or {}
+    period = extra.get('period')  # None => annuel (toutes les notes)
+    period_label = extra.get('period_label')
+
+    def _grades_for(subj):
+        qs = Grade.objects.filter(student=student, subject=subj)
+        if period:
+            qs = qs.filter(period=period)
+        return qs
 
     # ── Build token context and resolve all text fields ──
     platform_settings = _platform_settings(ecole=getattr(student, 'ecole', None))
@@ -342,6 +365,7 @@ def generate_bulletin_pdf_templated(student, subjects, rankings_data, template_c
         rankings_data=rankings_data,
         subjects=subjects,
         platform_settings=platform_settings,
+        period_label=period_label,
     )
 
     def rt(text):
@@ -511,14 +535,15 @@ def generate_bulletin_pdf_templated(student, subjects, rankings_data, template_c
         total_coeff = 0
 
         for subject in subjects:
-            grades = Grade.objects.filter(student=student, subject=subject)
+            grades = _grades_for(subject)
             avg = round(float(grades.aggregate(a=Avg('value'))['a']), 2) if grades.exists() else 0
             coeff = float(subject.coefficient)
             total_weighted += avg * coeff
             total_coeff += coeff
             appreciation = (
                 'Très Bien' if avg >= 16 else 'Bien' if avg >= 14 else
-                'Assez Bien' if avg >= 12 else 'Passable' if avg >= 10 else 'Insuffisant'
+                'Assez Bien' if avg >= 12 else 'Passable' if avg >= 10 else
+                'Insuffisant' if avg >= 8 else 'Très insuffisant'
             )
             teacher_name = ''
             if subject.teacher and subject.teacher.user:
@@ -563,10 +588,11 @@ def generate_bulletin_pdf_templated(student, subjects, rankings_data, template_c
         class_avg = rankings_data.get('class_average', 0)
         rank = rankings_data.get('rank', '-')
         total_s = rankings_data.get('total_students', '-')
-        gen_appr = (
-            'Très Bien' if general_avg >= 16 else 'Bien' if general_avg >= 14 else
-            'Assez Bien' if general_avg >= 12 else 'Passable' if general_avg >= 10 else 'Insuffisant'
-        )
+        from apps.reports.academics import appreciation as _appr, distinction as _distinction
+        gen_appr = _appr(general_avg)
+        distinction_txt = extra.get('distinction')
+        if distinction_txt is None:
+            distinction_txt = _distinction(general_avg, platform_settings)
         sum_rows = []
         if sum_cfg.get('showGeneralAverage', True):
             sum_rows.append(['Moyenne générale', f'{general_avg}/20'])
@@ -576,6 +602,8 @@ def generate_bulletin_pdf_templated(student, subjects, rankings_data, template_c
             sum_rows.append(['Rang', f'{rank}/{total_s}'])
         if sum_cfg.get('showMention', True):
             sum_rows.append(['Mention', gen_appr])
+        if distinction_txt:
+            sum_rows.append(['Distinction (conseil de classe)', distinction_txt])
 
         if sum_rows:
             sum_tbl = Table(sum_rows, colWidths=[7 * cm, 5 * cm])
@@ -591,6 +619,61 @@ def generate_bulletin_pdf_templated(student, subjects, rankings_data, template_c
             ]))
             elements.append(sum_tbl)
             elements.append(Spacer(1, 10))
+
+    # ── Assiduité : absences horaires ──
+    att = extra.get('attendance')
+    if att:
+        att_rows = [
+            ['Assiduité', period_label or 'Année scolaire'],
+            ['Absences (heures)', f"{att.get('absent_hours', 0):g} h"],
+            ['dont journées entières', f"{att.get('absent_days', 0)} j"],
+            ['Retards', f"{att.get('late_count', 0)}"
+             + (f" ({att.get('late_hours', 0):g} h)" if att.get('late_hours') else '')],
+            ['Total heures manquées', f"{att.get('total_hours', 0):g} h"],
+        ]
+        att_tbl = Table(att_rows, colWidths=[7 * cm, 5 * cm])
+        att_tbl.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(table_header_bg)),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f7fafc')),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor(border_color)),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ]))
+        elements.append(att_tbl)
+        elements.append(Spacer(1, 10))
+
+    # ── Décision de fin d'année (bulletin annuel uniquement) ──
+    decision = extra.get('decision')
+    if extra.get('is_annual') and decision:
+        kind = decision.get('kind', 'limite')
+        bg = {'admis': '#e6f4ea', 'limite': '#fef7e0', 'redouble': '#fde8e8'}.get(kind, '#f7fafc')
+        fg = {'admis': '#137333', 'limite': '#b06000', 'redouble': '#c53030'}.get(kind, primary)
+        dec_tbl = Table(
+            [[Paragraph('DÉCISION DE FIN D\'ANNÉE', ParagraphStyle(
+                'DecL', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold',
+                textColor=colors.HexColor('#475467'))),
+              Paragraph(decision.get('label', ''), ParagraphStyle(
+                'DecV', parent=styles['Normal'], fontSize=11, fontName='Helvetica-Bold',
+                textColor=colors.HexColor(fg), alignment=TA_RIGHT))]],
+            colWidths=[6 * cm, 12 * cm],
+        )
+        dec_tbl.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(bg)),
+            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor(fg)),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+            ('LEFTPADDING', (0, 0), (-1, -1), 12),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+        ]))
+        elements.append(dec_tbl)
+        elements.append(Spacer(1, 10))
 
     # ── Appreciations ──
     if app_cfg.get('show', True):
@@ -856,11 +939,27 @@ def generate_receipt_pdf_templated(payment, template_config):
     accent = col.get('accent', '#ebf8ff')
     currency = body_cfg.get('currency', 'FCFA')
 
+    # ── Format de page ──
+    # Reçu au format A5 paysage par défaut (demi-feuille A4, pratique pour la
+    # caisse). Le modèle peut forcer A4 portrait via body.pageSize = 'A4'.
+    from reportlab.lib.pagesizes import landscape, A5
+    page_size = (body_cfg.get('pageSize') or 'A5L').upper()
+    if page_size in ('A4', 'A4P'):
+        pagesize = A4
+        content_w = 17.0 * cm
+        m = 2.0 * cm
+    else:
+        pagesize = landscape(A5)
+        content_w = 18.8 * cm
+        m = 1.1 * cm
+
+    half_w = content_w / 2
+
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
-        buffer, pagesize=A4,
-        rightMargin=2 * cm, leftMargin=2 * cm,
-        topMargin=1.5 * cm, bottomMargin=1.5 * cm,
+        buffer, pagesize=pagesize,
+        rightMargin=m, leftMargin=m,
+        topMargin=0.9 * cm, bottomMargin=0.8 * cm,
     )
     styles = getSampleStyleSheet()
     elements = []
@@ -868,152 +967,208 @@ def generate_receipt_pdf_templated(payment, template_config):
     school_name = rt(hdr.get('schoolName', '')) or 'ÉTABLISSEMENT'
     doc_title   = rt(hdr.get('subtitle', 'REÇU DE PAIEMENT')) or 'REÇU DE PAIEMENT'
 
-    # ── Header ──
+    # ── Header (compact) ──
     header_data = [
         [Paragraph(school_name, ParagraphStyle(
             'RH', parent=styles['Normal'],
-            fontSize=14, textColor=colors.HexColor(header_text),
+            fontSize=12, textColor=colors.HexColor(header_text),
             fontName='Helvetica-Bold', alignment=TA_CENTER,
         ))],
         [Paragraph(doc_title, ParagraphStyle(
             'RHs', parent=styles['Normal'],
-            fontSize=11, textColor=colors.HexColor(header_text),
+            fontSize=9.5, textColor=colors.HexColor(header_text),
             alignment=TA_CENTER,
         ))],
     ]
-    hdr_tbl = Table(header_data, colWidths=['100%'])
+    hdr_tbl = Table(header_data, colWidths=[content_w])
     hdr_tbl.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(header_bg)),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
     ]))
     elements.append(hdr_tbl)
-    elements.append(Spacer(1, 16))
+    elements.append(Spacer(1, 6))
 
     # ── Receipt number ──
     if sec_cfg.get('showReceiptNumber', True):
         elements.append(Paragraph(
             f'N° Reçu : <b>{payment.receipt_number}</b>   |   Date : <b>{payment.payment_date}</b>',
-            ParagraphStyle('RN', parent=styles['Normal'], fontSize=10, alignment=TA_RIGHT),
+            ParagraphStyle('RN', parent=styles['Normal'], fontSize=9, alignment=TA_RIGHT),
         ))
-        elements.append(Spacer(1, 12))
+        elements.append(Spacer(1, 6))
 
-    # ── Student info ──
+    # ── Élève + détails du paiement (côte à côte) ──
+    student = payment.student
+    info_cell_style = TableStyle([
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8.5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor(border_color)),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+    ])
+
+    left_tbl = right_tbl = None
     if body_cfg.get('showStudentInfo', True):
-        student = payment.student
         info_rows = [
             ['Élève :', student.full_name if student else '-'],
             ['Matricule :', student.matricule if student else '-'],
             ['Classe :', student.classe.name if student and student.classe else '-'],
         ]
-        info_tbl = Table(info_rows, colWidths=[4 * cm, 13 * cm])
-        info_tbl.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(accent)),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor(border_color)),
-            ('LEFTPADDING', (0, 0), (-1, -1), 10),
-        ]))
-        elements.append(info_tbl)
-        elements.append(Spacer(1, 12))
+        left_tbl = Table(info_rows, colWidths=[2.6 * cm, half_w - 2.9 * cm])
+        _ls = info_cell_style.getCommands() + [('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(accent))]
+        left_tbl.setStyle(TableStyle(_ls))
 
-    # ── Payment details ──
     if body_cfg.get('showPaymentDetails', True):
         detail_rows = [
-            ['Type de paiement :', payment.get_payment_type_display()],
-            ['Montant payé :', f'{float(payment.amount):,.0f} {currency}'],
+            ['Type :', payment.get_payment_type_display()],
+            ['Montant :', f'{float(payment.amount):,.0f} {currency}'],
             ['Statut :', payment.get_status_display()],
         ]
         if payment.due_date:
             detail_rows.append(['Échéance :', str(payment.due_date)])
-        detail_tbl = Table(detail_rows, colWidths=[4 * cm, 13 * cm])
-        detail_tbl.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor(border_color)),
-            ('LEFTPADDING', (0, 0), (-1, -1), 10),
-        ]))
-        elements.append(detail_tbl)
-        elements.append(Spacer(1, 20))
+        right_tbl = Table(detail_rows, colWidths=[2.6 * cm, half_w - 2.9 * cm])
+        right_tbl.setStyle(info_cell_style)
 
-    # ── Solde : scolarité totale, payé, reste à payer ──
+    if left_tbl is not None or right_tbl is not None:
+        cols_tbl = Table(
+            [[left_tbl or '', right_tbl or '']],
+            colWidths=[half_w, half_w],
+        )
+        cols_tbl.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (0, -1), 0),
+            ('RIGHTPADDING', (0, 0), (0, -1), 6),
+            ('LEFTPADDING', (1, 0), (1, -1), 6),
+            ('RIGHTPADDING', (1, 0), (1, -1), 0),
+        ]))
+        elements.append(cols_tbl)
+        elements.append(Spacer(1, 8))
+
+    # ── Solde : scolarité, remise, net dû, payé, reste à payer ──
     if body_cfg.get('showBalance', True) and payment.student and payment.student.classe:
-        from django.db.models import Sum as _Sum
         student = payment.student
-        tuition = float(student.classe.tuition_fee or 0)
-        total_paid = float(student.payments.filter(status='PAID').aggregate(t=_Sum('amount'))['t'] or 0)
-        reste = max(0.0, tuition - total_paid)
-        bal_rows = [
-            ['Scolarité totale :', f'{tuition:,.0f} {currency}'],
-            ['Total payé :', f'{total_paid:,.0f} {currency}'],
-            ['Reste à payer :', f'{reste:,.0f} {currency}'],
-        ]
-        bal_tbl = Table(bal_rows, colWidths=[5 * cm, 12 * cm])
+        from apps.payments.pension import build_pension_situation
+        situ = build_pension_situation(student)
+        tuition = situ['tuition']
+        remise = situ['discount_amount']
+        net_due = situ['net_due']
+        total_paid = situ['total_paid']
+        reste = situ['reste']
+        bal_rows = [['Scolarité totale :', f'{tuition:,.0f} {currency}']]
+        if remise > 0:
+            reason = student.discount_reason or 'Remise'
+            bal_rows.append([f'Remise ({reason}) :', f'- {remise:,.0f} {currency}'])
+            bal_rows.append(['Net à payer :', f'{net_due:,.0f} {currency}'])
+        bal_rows.append(['Total payé :', f'{total_paid:,.0f} {currency}'])
+        bal_rows.append(['Reste à payer :', f'{reste:,.0f} {currency}'])
+        bal_tbl = Table(bal_rows, colWidths=[4 * cm, content_w - 4 * cm])
         bal_tbl.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('FONTSIZE', (0, 0), (-1, -1), 8.5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor(border_color)),
-            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(accent)),
             # Reste à payer en évidence
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
             ('TEXTCOLOR', (1, -1), (1, -1), colors.HexColor('#c53030')),
         ]))
         elements.append(bal_tbl)
-        elements.append(Spacer(1, 20))
-
-    # ── Amount box ──
-    amount_style = ParagraphStyle(
-        'Amt', parent=styles['Normal'],
-        fontSize=20, fontName='Helvetica-Bold',
-        textColor=colors.HexColor(primary), alignment=TA_CENTER,
-    )
-    elements.append(Table(
-        [[Paragraph(f'{float(payment.amount):,.0f} {currency}', amount_style)]],
-        colWidths=['100%'],
-    ))
-    elements.append(Spacer(1, 20))
-
-    # ── Custom text block ──
-    custom_text = rt(body_cfg.get('customText', ''))
-    if custom_text:
         elements.append(Spacer(1, 8))
-        elements.append(Paragraph(
-            custom_text,
-            ParagraphStyle('CT', parent=styles['Normal'], fontSize=9, alignment=TA_CENTER),
-        ))
 
-    # ── Signatures ──
+        # ── Échéancier des tranches (répartition automatique) ──
+        tranches = situ.get('tranches') or []
+        if body_cfg.get('showTranches', True) and tranches:
+            status_label = {'PAID': 'Soldée', 'PARTIAL': 'Partielle', 'PENDING': 'À venir'}
+            tr_data = [['Tranche', 'Montant', 'Payé', 'Reste', 'Échéance', 'État']]
+            for tr in tranches:
+                tr_data.append([
+                    tr['label'],
+                    f"{tr['effective_amount']:,.0f}",
+                    f"{tr['allocated']:,.0f}",
+                    f"{tr['remaining']:,.0f}",
+                    (tr['due_date'] or '—'),
+                    status_label.get(tr['status'], tr['status']),
+                ])
+            # Largeurs proportionnelles à la largeur utile
+            tr_widths = [w * content_w for w in (0.26, 0.15, 0.15, 0.15, 0.15, 0.14)]
+            tr_tbl = Table(tr_data, colWidths=tr_widths)
+            tr_style = [
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(primary)),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 7.5),
+                ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor(border_color)),
+                ('TOPPADDING', (0, 0), (-1, -1), 2.5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5),
+            ]
+            for i, tr in enumerate(tranches, start=1):
+                if tr['status'] == 'PAID':
+                    tr_style.append(('TEXTCOLOR', (5, i), (5, i), colors.HexColor('#276749')))
+                elif tr['overdue']:
+                    tr_style.append(('TEXTCOLOR', (5, i), (5, i), colors.HexColor('#c53030')))
+            tr_tbl.setStyle(TableStyle(tr_style))
+            elements.append(tr_tbl)
+            elements.append(Spacer(1, 6))
+
+    # ── Amount box + signatures (côte à côte pour gagner de la hauteur) ──
+    amount_para = Paragraph(
+        f'{float(payment.amount):,.0f} {currency}',
+        ParagraphStyle('Amt', parent=styles['Normal'], fontSize=15,
+                       fontName='Helvetica-Bold', textColor=colors.HexColor(primary),
+                       alignment=TA_CENTER),
+    )
+    amount_box = Table([
+        [Paragraph('Montant reçu', ParagraphStyle('AmtL', parent=styles['Normal'],
+                   fontSize=7.5, textColor=colors.HexColor('#667085'), alignment=TA_CENTER))],
+        [amount_para],
+    ], colWidths=[half_w])
+    amount_box.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(accent)),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor(border_color)),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+
+    sig_cell = ''
     if sig_cfg.get('show', True):
         sigs = [
             rt(sig_cfg.get('cashierLabel', 'Le Caissier')),
             rt(sig_cfg.get('directorLabel', 'Le Directeur')),
         ]
-        sig_tbl = Table([[s for s in sigs], ['_' * 20] * len(sigs)], colWidths=[9 * cm] * 2)
-        sig_tbl.setStyle(TableStyle([
+        sig_cell = Table([sigs, ['_' * 14] * len(sigs)], colWidths=[half_w / 2] * 2)
+        sig_cell.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('TOPPADDING', (0, 0), (-1, -1), 20),
-            ('BOTTOMPADDING', (0, 1), (-1, 1), 4),
-            ('LINEABOVE', (0, 1), (-1, 1), 0.5, colors.HexColor(border_color)),
+            ('TOPPADDING', (0, 0), (-1, 0), 4),
+            ('TOPPADDING', (0, 1), (-1, 1), 14),
         ]))
-        elements.append(sig_tbl)
+
+    bottom_tbl = Table([[amount_box, sig_cell]], colWidths=[half_w, half_w])
+    bottom_tbl.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'MIDDLE')]))
+    elements.append(bottom_tbl)
+
+    # ── Custom text block ──
+    custom_text = rt(body_cfg.get('customText', ''))
+    if custom_text:
+        elements.append(Spacer(1, 4))
+        elements.append(Paragraph(
+            custom_text,
+            ParagraphStyle('CT', parent=styles['Normal'], fontSize=8, alignment=TA_CENTER),
+        ))
 
     # ── Footer ──
     if foot_cfg.get('show', True) and foot_cfg.get('text'):
-        elements.append(Spacer(1, 16))
+        elements.append(Spacer(1, 6))
         elements.append(HRFlowable(width='100%', thickness=0.5, color=colors.HexColor(border_color)))
         elements.append(Paragraph(
             rt(foot_cfg['text']),
             ParagraphStyle('RF', parent=styles['Normal'],
-                           fontSize=8, textColor=colors.HexColor('#667085'), alignment=TA_CENTER),
+                           fontSize=7, textColor=colors.HexColor('#667085'), alignment=TA_CENTER),
         ))
 
     doc.build(elements)
@@ -1097,8 +1252,14 @@ def generate_card_pdf_templated(student, template_config):
         info_lines.append(f"Classe: {token_ctx.get('{{CLASSE}}', student.classe.name if student.classe else '-')}")
     if body_cfg.get('showYear', True) and year_name:
         info_lines.append(f"Année: {year_name}")
-    if body_cfg.get('showDateOfBirth', False) and token_ctx.get('{{DATE_NAISSANCE}}'):
-        info_lines.append(f"Né(e): {token_ctx['{{DATE_NAISSANCE}}']}")
+    if body_cfg.get('showDateOfBirth', True):
+        dob = token_ctx.get('{{DATE_NAISSANCE}}', '')
+        birthplace = token_ctx.get('{{LIEU_NAISSANCE}}', '')
+        if dob or birthplace:
+            born = f"Né(e): {dob}"
+            if birthplace:
+                born += f" à {birthplace}"
+            info_lines.append(born.strip())
     if sec_cfg.get('showUniqueId', True):
         info_lines.append(f"ID: {token_ctx.get('{{NUMERO_DOC}}', '')}")
     info_text = '<br/>'.join(info_lines)
@@ -1176,6 +1337,449 @@ def generate_card_pdf_templated(student, template_config):
     ]))
     elements.append(page_tbl)
 
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
+def generate_payslip_pdf(salary):
+    """Génère une fiche de paie PDF (A4 portrait) pour un versement de salaire."""
+    ps = _platform_settings(ecole=getattr(salary, 'ecole', None))
+    school_name = (ps.school_name if ps else '') or 'ÉTABLISSEMENT'
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        rightMargin=2 * cm, leftMargin=2 * cm,
+        topMargin=1.6 * cm, bottomMargin=1.6 * cm,
+    )
+    styles = getSampleStyleSheet()
+    elements = []
+    primary = '#1a365d'
+
+    # ── En-tête établissement + logo ──
+    if ps and getattr(ps, 'logo', None):
+        try:
+            from reportlab.platypus import Image as _RLImage
+            elements.append(_RLImage(ps.logo.path, width=2.2 * cm, height=2.2 * cm))
+            elements.append(Spacer(1, 4))
+        except Exception:
+            pass
+    elements.append(Paragraph(school_name, ParagraphStyle(
+        'PSName', parent=styles['Title'], fontSize=15,
+        textColor=colors.HexColor(primary), alignment=TA_CENTER, spaceAfter=2)))
+    if ps and ps.bulletin_header:
+        elements.append(Paragraph(
+            ps.bulletin_header.replace('\n', '<br/>'),
+            ParagraphStyle('PSHdr', parent=styles['Normal'], fontSize=8.5,
+                           alignment=TA_CENTER, textColor=colors.HexColor('#4a5568'), spaceAfter=4)))
+    elements.append(Paragraph('FICHE DE PAIE', ParagraphStyle(
+        'PSTitle', parent=styles['Normal'], fontSize=13, fontName='Helvetica-Bold',
+        alignment=TA_CENTER, textColor=colors.HexColor('#2d3748'), spaceAfter=2)))
+    # Période affichée
+    period = salary.period
+    try:
+        y, mth = period.split('-')
+        mois = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
+                'août', 'septembre', 'octobre', 'novembre', 'décembre']
+        period_disp = f"{mois[int(mth)]} {y}".capitalize()
+    except Exception:
+        period_disp = period
+    elements.append(Paragraph(f"Période : {period_disp}", ParagraphStyle(
+        'PSSub', parent=styles['Normal'], fontSize=10, alignment=TA_CENTER,
+        textColor=colors.HexColor('#667085'), spaceAfter=12)))
+    elements.append(HRFlowable(width='100%', thickness=1, color=colors.HexColor('#e2e8f0')))
+    elements.append(Spacer(1, 12))
+
+    # ── Employé ──
+    emp_rows = [
+        ['Employé :', salary.employee_name],
+        ['Fonction :', salary.employee_position or '-'],
+        ['Type :', salary.get_staff_type_display()],
+        ['Date de versement :', str(salary.payment_date)],
+        ['Mode de paiement :', salary.get_method_display()],
+    ]
+    emp_tbl = Table(emp_rows, colWidths=[5 * cm, 11 * cm])
+    emp_tbl.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#4a5568')),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
+        ('TOPPADDING', (0, 0), (-1, -1), 7),
+        ('LINEBELOW', (0, 0), (-1, -2), 0.4, colors.HexColor('#edf2f7')),
+    ]))
+    elements.append(emp_tbl)
+    elements.append(Spacer(1, 16))
+
+    # ── Récapitulatif de rémunération ──
+    net = float(salary.amount)
+    pay_rows = [
+        ['Désignation', 'Montant (FCFA)'],
+        ['Salaire versé', f'{net:,.0f}'],
+        ['NET À PAYER', f'{net:,.0f}'],
+    ]
+    pay_tbl = Table(pay_rows, colWidths=[11 * cm, 5 * cm])
+    pay_tbl.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(primary)),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e0')),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, -1), (-1, -1), 12),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#ebf8ff')),
+        ('TEXTCOLOR', (0, -1), (-1, -1), colors.HexColor(primary)),
+        ('LINEABOVE', (0, -1), (-1, -1), 1.2, colors.HexColor(primary)),
+    ]))
+    elements.append(pay_tbl)
+    if salary.notes:
+        elements.append(Spacer(1, 10))
+        elements.append(Paragraph(f"Observations : {salary.notes}", ParagraphStyle(
+            'PSNote', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#4a5568'))))
+    elements.append(Spacer(1, 40))
+
+    # ── Signatures ──
+    sig_tbl = Table([["L'Employé", 'La Direction'], ['_' * 22, '_' * 22]], colWidths=[8 * cm, 8 * cm])
+    sig_tbl.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING', (0, 1), (-1, 1), 22),
+    ]))
+    elements.append(sig_tbl)
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
+def generate_student_sheet_pdf(student):
+    """Fiche élève PDF (A4 portrait) : identité, scolarité, parent, situation."""
+    ps = _platform_settings(ecole=getattr(student, 'ecole', None))
+    school_name = (ps.school_name if ps else '') or 'ÉTABLISSEMENT'
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        rightMargin=1.8 * cm, leftMargin=1.8 * cm,
+        topMargin=1.5 * cm, bottomMargin=1.5 * cm,
+    )
+    styles = getSampleStyleSheet()
+    elements = []
+    primary = '#1a365d'
+
+    # En-tête
+    header_cells = []
+    if ps and getattr(ps, 'logo', None):
+        try:
+            from reportlab.platypus import Image as _RLImage
+            header_cells.append(_RLImage(ps.logo.path, width=2 * cm, height=2 * cm))
+        except Exception:
+            header_cells.append('')
+    elements.append(Paragraph(school_name, ParagraphStyle(
+        'SSName', parent=styles['Title'], fontSize=15,
+        textColor=colors.HexColor(primary), alignment=TA_CENTER, spaceAfter=2)))
+    elements.append(Paragraph('FICHE ÉLÈVE', ParagraphStyle(
+        'SSTitle', parent=styles['Normal'], fontSize=13, fontName='Helvetica-Bold',
+        alignment=TA_CENTER, textColor=colors.HexColor('#2d3748'), spaceAfter=10)))
+    elements.append(HRFlowable(width='100%', thickness=1, color=colors.HexColor('#e2e8f0')))
+    elements.append(Spacer(1, 10))
+
+    # Photo + identité côte à côte
+    photo_cell = ''
+    if student.photo:
+        try:
+            from reportlab.platypus import Image as _RLImage
+            photo_cell = _RLImage(student.photo.path, width=3 * cm, height=3.6 * cm)
+        except Exception:
+            photo_cell = Paragraph('[ Photo ]', styles['Normal'])
+    else:
+        photo_cell = Paragraph('[ Photo ]', ParagraphStyle('Ph', parent=styles['Normal'],
+                                                           alignment=TA_CENTER, textColor=colors.HexColor('#98a2b3')))
+
+    def _kv(rows, widths):
+        t = Table(rows, colWidths=widths)
+        t.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9.5),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#4a5568')),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LINEBELOW', (0, 0), (-1, -1), 0.3, colors.HexColor('#edf2f7')),
+        ]))
+        return t
+
+    identity = _kv([
+        ['Matricule :', student.matricule],
+        ['Nom :', student.last_name],
+        ['Prénom :', student.first_name],
+        ['Genre :', student.get_gender_display()],
+        ['Naissance :', f"{student.date_of_birth or '—'} à {student.birth_place or '—'}"],
+        ['Nationalité :', student.nationality or '—'],
+    ], [3 * cm, 8.4 * cm])
+
+    top = Table([[photo_cell, identity]], colWidths=[3.6 * cm, 11.8 * cm])
+    top.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'TOP'), ('LEFTPADDING', (1, 0), (1, 0), 10)]))
+    elements.append(top)
+    elements.append(Spacer(1, 14))
+
+    def section(title, tbl):
+        elements.append(Paragraph(title, ParagraphStyle(
+            'SSsec', parent=styles['Normal'], fontSize=10.5, fontName='Helvetica-Bold',
+            textColor=colors.HexColor(primary), spaceAfter=4)))
+        elements.append(tbl)
+        elements.append(Spacer(1, 12))
+
+    section('Scolarité', _kv([
+        ['Classe :', student.classe.name if student.classe else '—'],
+        ['Année scolaire :', student.classe.academic_year.name if student.classe and student.classe.academic_year else '—'],
+        ["Date d'inscription :", str(student.enrolled_date) if student.enrolled_date else '—'],
+        ['Statut :', 'Actif' if student.is_active else 'Inactif'],
+    ], [4 * cm, 11.4 * cm]))
+
+    section('Parent / Tuteur', _kv([
+        ['Nom du parent :', student.parent_name or '—'],
+        ['Téléphone :', student.parent_phone or '—'],
+        ['Email :', student.parent_email or '—'],
+        ['Adresse :', student.address or '—'],
+    ], [4 * cm, 11.4 * cm]))
+
+    # Situation financière (scolarité / remise / reste)
+    try:
+        from apps.payments.pension import build_pension_situation
+        situ = build_pension_situation(student)
+        fin_rows = [
+            ['Scolarité :', f"{situ['tuition']:,.0f} FCFA"],
+        ]
+        if situ['discount_amount'] > 0:
+            fin_rows.append(['Remise :', f"- {situ['discount_amount']:,.0f} FCFA"])
+            fin_rows.append(['Net à payer :', f"{situ['net_due']:,.0f} FCFA"])
+        fin_rows.append(['Total payé :', f"{situ['total_paid']:,.0f} FCFA"])
+        fin_rows.append(['Reste à payer :', f"{situ['reste']:,.0f} FCFA"])
+        section('Situation financière', _kv(fin_rows, [4 * cm, 11.4 * cm]))
+    except Exception:
+        pass
+
+    elements.append(Spacer(1, 20))
+    elements.append(Paragraph(
+        f"Fiche éditée le {_date.today().strftime('%d/%m/%Y')}",
+        ParagraphStyle('SSf', parent=styles['Normal'], fontSize=8,
+                       textColor=colors.HexColor('#98a2b3'), alignment=TA_RIGHT)))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
+def generate_class_roster_pdf(classe, students):
+    """Liste des élèves d'une classe (A4 portrait) : Nom, Prénom, Sexe,
+    Date et Lieu de naissance."""
+    ps = _platform_settings(ecole=getattr(classe, 'ecole', None))
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        rightMargin=1.4 * cm, leftMargin=1.4 * cm,
+        topMargin=1.4 * cm, bottomMargin=1.4 * cm,
+    )
+    styles = getSampleStyleSheet()
+    elements = []
+
+    school_name = (ps.school_name if ps else '') or ''
+    if school_name:
+        elements.append(Paragraph(school_name, ParagraphStyle(
+            'RN', parent=styles['Title'], fontSize=14,
+            textColor=colors.HexColor('#1a365d'), alignment=TA_CENTER, spaceAfter=2)))
+    year_name = (ps.school_year if ps and ps.school_year else
+                 (classe.academic_year.name if classe.academic_year else ''))
+    elements.append(Paragraph(f"LISTE DES ÉLÈVES — CLASSE {classe.name}", ParagraphStyle(
+        'RT', parent=styles['Normal'], fontSize=13, fontName='Helvetica-Bold',
+        alignment=TA_CENTER, spaceAfter=2, textColor=colors.HexColor('#2d3748'))))
+    sub = f"{len(students)} élève(s)"
+    if year_name:
+        sub = f"Année scolaire {year_name}  ·  " + sub
+    elements.append(Paragraph(sub, ParagraphStyle(
+        'RSub', parent=styles['Normal'], fontSize=9, alignment=TA_CENTER,
+        textColor=colors.HexColor('#667085'), spaceAfter=12)))
+
+    cell = ParagraphStyle('RC', parent=styles['Normal'], fontSize=8.5, leading=11)
+    header = ['N°', 'Nom', 'Prénom', 'Sexe', 'Date de naissance', 'Lieu de naissance']
+    data = [header]
+    for i, s in enumerate(students, start=1):
+        data.append([
+            str(i),
+            Paragraph(s.last_name or '—', cell),
+            Paragraph(s.first_name or '—', cell),
+            s.get_gender_display()[:1] if s.gender else '—',
+            s.date_of_birth.strftime('%d/%m/%Y') if s.date_of_birth else '—',
+            Paragraph(s.birth_place or '—', cell),
+        ])
+    tbl = Table(data, colWidths=[1.1 * cm, 4.3 * cm, 4.3 * cm, 1.4 * cm, 3.4 * cm, 4.0 * cm], repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2b6cb0')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('FONTSIZE', (0, 1), (-1, -1), 8.5),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ('ALIGN', (3, 0), (4, -1), 'CENTER'),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e0')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f7fafc')]),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(tbl)
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
+def generate_timetable_pdf(classe, entries):
+    """Emploi du temps d'une classe (A4 paysage). `entries` : liste d'objets
+    ScheduleEntry (jour, horaires, matière/libellé, salle)."""
+    from reportlab.lib.pagesizes import landscape
+
+    DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']
+    ps = _platform_settings(ecole=getattr(classe, 'ecole', None))
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=landscape(A4),
+        rightMargin=1.2 * cm, leftMargin=1.2 * cm,
+        topMargin=1.2 * cm, bottomMargin=1.2 * cm,
+    )
+    styles = getSampleStyleSheet()
+    elements = []
+
+    school_name = (ps.school_name if ps else '') or ''
+    if school_name:
+        elements.append(Paragraph(school_name, ParagraphStyle(
+            'TN', parent=styles['Title'], fontSize=14,
+            textColor=colors.HexColor('#1a365d'), alignment=TA_CENTER, spaceAfter=2)))
+    year_name = (ps.school_year if ps and ps.school_year else
+                 (classe.academic_year.name if classe.academic_year else ''))
+    elements.append(Paragraph(f"EMPLOI DU TEMPS — CLASSE {classe.name}", ParagraphStyle(
+        'TT', parent=styles['Normal'], fontSize=13, fontName='Helvetica-Bold',
+        alignment=TA_CENTER, spaceAfter=2, textColor=colors.HexColor('#2d3748'))))
+    if year_name:
+        elements.append(Paragraph(f"Année scolaire {year_name}", ParagraphStyle(
+            'TSub', parent=styles['Normal'], fontSize=9, alignment=TA_CENTER,
+            textColor=colors.HexColor('#667085'), spaceAfter=12)))
+
+    def _label(e):
+        subj = getattr(e, 'subject', None)
+        name = subj.name if subj else (e.subject_name or '—')
+        room = f"\n({e.room})" if e.room else ''
+        return f"{e.start_time.strftime('%H:%M')}–{e.end_time.strftime('%H:%M')}\n{name}{room}"
+
+    cell = ParagraphStyle('TC', parent=styles['Normal'], fontSize=7.5, leading=9.5, alignment=TA_CENTER)
+    by_day = {d: [] for d in range(6)}
+    for e in entries:
+        if e.day in by_day:
+            by_day[e.day].append(e)
+    for d in by_day:
+        by_day[d].sort(key=lambda x: x.start_time)
+
+    header = [Paragraph(f"<b>{DAYS[d]}</b>", ParagraphStyle('TH', parent=cell, textColor=colors.white)) for d in range(6)]
+    max_rows = max((len(by_day[d]) for d in range(6)), default=0)
+    data = [header]
+    for r in range(max_rows):
+        row = []
+        for d in range(6):
+            e = by_day[d][r] if r < len(by_day[d]) else None
+            row.append(Paragraph(_label(e).replace('\n', '<br/>'), cell) if e else '')
+        data.append(row)
+    if max_rows == 0:
+        data.append([Paragraph('Aucun créneau défini.', cell)] + [''] * 5)
+
+    col_w = (27.0 / 6) * cm
+    tbl = Table(data, colWidths=[col_w] * 6, repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2b6cb0')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e0')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f7fafc')]),
+    ]))
+    elements.append(tbl)
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
+def generate_teacher_timetable_pdf(teacher, entries):
+    """Emploi du temps d'un professeur (A4 paysage) : ses créneaux sur toutes
+    ses classes. `entries` : ScheduleEntry (jour, horaires, classe, matière, salle)."""
+    from reportlab.lib.pagesizes import landscape
+
+    DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']
+    ps = _platform_settings(ecole=getattr(teacher, 'ecole', None))
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=landscape(A4),
+        rightMargin=1.2 * cm, leftMargin=1.2 * cm,
+        topMargin=1.2 * cm, bottomMargin=1.2 * cm,
+    )
+    styles = getSampleStyleSheet()
+    elements = []
+
+    school_name = (ps.school_name if ps else '') or ''
+    if school_name:
+        elements.append(Paragraph(school_name, ParagraphStyle(
+            'PTN', parent=styles['Title'], fontSize=14,
+            textColor=colors.HexColor('#1a365d'), alignment=TA_CENTER, spaceAfter=2)))
+    elements.append(Paragraph(f"EMPLOI DU TEMPS — {teacher.full_name}", ParagraphStyle(
+        'PTT', parent=styles['Normal'], fontSize=13, fontName='Helvetica-Bold',
+        alignment=TA_CENTER, spaceAfter=2, textColor=colors.HexColor('#2d3748'))))
+    year_name = ps.school_year if ps and ps.school_year else ''
+    if year_name:
+        elements.append(Paragraph(f"Année scolaire {year_name}", ParagraphStyle(
+            'PTSub', parent=styles['Normal'], fontSize=9, alignment=TA_CENTER,
+            textColor=colors.HexColor('#667085'), spaceAfter=12)))
+
+    def _label(e):
+        subj = getattr(e, 'subject', None)
+        name = subj.name if subj else (e.subject_name or '—')
+        classe = e.classe.name if e.classe else '—'
+        room = f" · {e.room}" if e.room else ''
+        return f"{e.start_time.strftime('%H:%M')}–{e.end_time.strftime('%H:%M')}\n<b>{classe}</b>\n{name}{room}"
+
+    cell = ParagraphStyle('PTC', parent=styles['Normal'], fontSize=7.5, leading=9.5, alignment=TA_CENTER)
+    by_day = {d: [] for d in range(6)}
+    for e in entries:
+        if e.day in by_day:
+            by_day[e.day].append(e)
+    for d in by_day:
+        by_day[d].sort(key=lambda x: x.start_time)
+
+    header = [Paragraph(f"<b>{DAYS[d]}</b>", ParagraphStyle('PTH', parent=cell, textColor=colors.white)) for d in range(6)]
+    max_rows = max((len(by_day[d]) for d in range(6)), default=0)
+    data = [header]
+    for r in range(max_rows):
+        row = []
+        for d in range(6):
+            e = by_day[d][r] if r < len(by_day[d]) else None
+            row.append(Paragraph(_label(e).replace('\n', '<br/>'), cell) if e else '')
+        data.append(row)
+    if max_rows == 0:
+        data.append([Paragraph('Aucun créneau associé à ce professeur.', cell)] + [''] * 5)
+
+    col_w = (27.0 / 6) * cm
+    tbl = Table(data, colWidths=[col_w] * 6, repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2b6cb0')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e0')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f7fafc')]),
+    ]))
+    elements.append(tbl)
     doc.build(elements)
     buffer.seek(0)
     return buffer

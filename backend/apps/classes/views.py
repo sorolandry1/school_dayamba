@@ -5,12 +5,22 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from apps.users.permissions import IsAdmin, IsClasseStaff
 from apps.users.mixins import EcoleScopedMixin
-from .models import AcademicYear, Level, Classe, ScheduleEntry, ScheduleFile
+from .models import AcademicYear, Level, Classe, ScheduleEntry, ScheduleFile, PensionTranche
 from .serializers import (
     AcademicYearSerializer, LevelSerializer,
     ClasseSerializer, ClasseDetailSerializer, ScheduleEntrySerializer,
-    ScheduleFileSerializer,
+    ScheduleFileSerializer, PensionTrancheSerializer,
 )
+
+
+class PensionTrancheViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
+    """Tranches de l'échéancier de scolarité (pension) par classe."""
+    ecole_lookup = 'classe__ecole'
+    queryset = PensionTranche.objects.select_related('classe').all()
+    serializer_class = PensionTrancheSerializer
+    permission_classes = [IsClasseStaff]
+    filterset_fields = ['classe']
+    pagination_class = None
 
 
 class ScheduleEntryViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
@@ -146,6 +156,78 @@ class ClasseViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=['post'], permission_classes=[IsClasseStaff])
+    def promote(self, request):
+        """Transfert inter-années : promeut les élèves d'une année vers une autre.
+
+        Corps attendu :
+          target_year_id | target_year_name : année cible (existante ou à créer)
+          mappings : [{source_classe_id, target_classe_id | target_classe_name (+ level_name)}]
+          exclude_student_ids : élèves à ne pas transférer (redoublants)
+          set_current : bool — définir l'année cible comme courante
+        """
+        from apps.students.models import Student
+        data = request.data
+        ecole = getattr(request.user, 'ecole', None)
+
+        # ── Résolution de l'année cible ──
+        year = None
+        if data.get('target_year_id'):
+            year = AcademicYear.objects.filter(id=data['target_year_id']).first()
+        if year is None and data.get('target_year_name'):
+            name = str(data['target_year_name']).strip()
+            try:
+                start_y = int(name.split('-')[0])
+            except (ValueError, IndexError):
+                start_y = date.today().year
+            year, _ = AcademicYear.objects.get_or_create(
+                name=name, ecole=ecole,
+                defaults={'start_date': date(start_y, 10, 1),
+                          'end_date': date(start_y + 1, 7, 31)},
+            )
+        if year is None:
+            return Response({'error': 'Année cible requise (target_year_id ou target_year_name).'}, status=400)
+
+        exclude = set(data.get('exclude_student_ids') or [])
+        source_qs = self.get_queryset()  # scope par école
+        promoted, created_classes, details = 0, 0, []
+
+        for m in (data.get('mappings') or []):
+            src = source_qs.filter(id=m.get('source_classe_id')).first()
+            if not src:
+                continue
+            tgt = None
+            if m.get('target_classe_id'):
+                tgt = Classe.objects.filter(id=m['target_classe_id']).first()
+            if tgt is None and m.get('target_classe_name'):
+                level = _get_or_create_level(m['level_name']) if m.get('level_name') else src.level
+                tgt, was = Classe.objects.get_or_create(
+                    name=str(m['target_classe_name']).strip(), academic_year=year,
+                    defaults={'level': level, 'capacity': src.capacity,
+                              'tuition_fee': src.tuition_fee, 'ecole': ecole},
+                )
+                if was:
+                    created_classes += 1
+            if tgt is None:
+                continue
+            students = Student.objects.filter(classe=src, is_active=True).exclude(id__in=exclude)
+            n = students.count()
+            students.update(classe=tgt)
+            promoted += n
+            details.append({'source': src.name, 'target': tgt.name, 'count': n})
+
+        if data.get('set_current'):
+            year.is_current = True
+            year.save()
+
+        return Response({
+            'promoted': promoted,
+            'created_classes': created_classes,
+            'target_year': year.name,
+            'target_year_id': year.id,
+            'details': details,
+        })
 
     @action(detail=False, methods=['get'])
     def current_year(self, request):

@@ -12,6 +12,11 @@ class Student(models.Model):
         MALE = 'M', 'Masculin'
         FEMALE = 'F', 'Féminin'
 
+    class DiscountType(models.TextChoices):
+        NONE = 'NONE', 'Aucune'
+        PERCENT = 'PERCENT', 'Pourcentage'
+        FIXED = 'FIXED', 'Montant fixe'
+
     ecole = models.ForeignKey('users.Ecole', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
@@ -36,6 +41,12 @@ class Student(models.Model):
     is_active = models.BooleanField(default=True)
     enrolled_date = models.DateField(auto_now_add=True)
     photo = models.ImageField(upload_to='students/', blank=True, null=True)
+    # Remise sur la scolarité (bourse, fratrie, personnel…)
+    discount_type = models.CharField(
+        max_length=10, choices=DiscountType.choices, default=DiscountType.NONE
+    )
+    discount_value = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    discount_reason = models.CharField(max_length=200, blank=True, default='')
 
     class Meta:
         db_table = 'students'
@@ -53,9 +64,31 @@ class Student(models.Model):
     def full_name(self):
         return f"{self.last_name} {self.first_name}"
 
+    @property
+    def tuition_fee(self):
+        """Frais de scolarité bruts (avant remise), depuis la classe."""
+        return float(self.classe.tuition_fee) if self.classe else 0.0
+
+    def discount_amount(self, tuition=None):
+        """Montant de la remise en FCFA appliqué à la scolarité."""
+        base = self.tuition_fee if tuition is None else float(tuition)
+        value = float(self.discount_value or 0)
+        if self.discount_type == self.DiscountType.PERCENT:
+            return round(base * value / 100.0, 2)
+        if self.discount_type == self.DiscountType.FIXED:
+            return min(value, base)
+        return 0.0
+
+    @property
+    def net_tuition(self):
+        """Scolarité nette due après remise (jamais négative)."""
+        tuition = self.tuition_fee
+        return max(0.0, round(tuition - self.discount_amount(tuition), 2))
+
     def save(self, *args, **kwargs):
         if not self.matricule:
-            self.matricule = f"ELV-{uuid.uuid4().hex[:8].upper()}"
+            from utils.numbering import next_matricule
+            self.matricule = next_matricule(getattr(self, 'ecole', None))
         if not self.qr_code_data:
             dob = str(self.date_of_birth) if self.date_of_birth else ''
             self.qr_code_data = (

@@ -9,7 +9,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-change-this-in-production-k3y!')
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() == 'true'
-ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+# Déploiement LAN : par défaut on autorise tous les hôtes (réseau local isolé).
+# En production exposée sur internet, définir DJANGO_ALLOWED_HOSTS explicitement.
+ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '*').split(',')
 
 
 INSTALLED_APPS = [
@@ -33,6 +35,9 @@ INSTALLED_APPS = [
     'apps.attendance',
     'apps.payments',
     'apps.reports',
+    'apps.payroll',
+    'apps.licensing',
+    'apps.schoolyear',
 ]
 
 
@@ -47,6 +52,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'config.middleware.SecurityHeadersMiddleware',   # Custom security headers
+    'apps.licensing.middleware.LicenseEnforcementMiddleware',  # Blocage si licence expirée
 ]
 
 
@@ -75,7 +81,8 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        # Surchargeable pour le packaging exe (BD écrite à côté du .exe).
+        'NAME': os.environ.get('DB_SQLITE_PATH') or (BASE_DIR / 'db.sqlite3'),
         'OPTIONS': {
             'timeout': 20,
         },
@@ -132,18 +139,23 @@ SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB
 
-# Paramètres HTTPS (activés en production uniquement)
+# Durcissement hors DEBUG (sans dépendre de HTTPS — utile en LAN sur HTTP).
 if not DEBUG:
+    CSRF_COOKIE_HTTPONLY = True
+    CSRF_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '*').split(',')
+
+# Paramètres HTTPS : UNIQUEMENT si explicitement activé (déploiement exposé sur
+# internet derrière TLS). En déploiement local/LAN sur HTTP, laisser désactivé
+# sinon SECURE_SSL_REDIRECT casse l'accès http://IP:5006.
+if os.environ.get('DJANGO_ENABLE_HTTPS', 'false').lower() == 'true':
     SECURE_HSTS_SECONDS = 31536000          # 1 an
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    CSRF_COOKIE_HTTPONLY = True
-    CSRF_COOKIE_SAMESITE = 'Strict'
-    SESSION_COOKIE_SAMESITE = 'Strict'
-    ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'schoolpro.example.com').split(',')
 
 
 # ─── Internationalisation ─────────────────────────────────────────────────────
@@ -154,10 +166,16 @@ USE_TZ = True
 
 
 # ─── Fichiers statiques & media ───────────────────────────────────────────────
-STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+# Les chemins peuvent être surchargés par variables d'environnement pour le
+# packaging en exécutable (données écrites à côté du .exe, pas dans le bundle).
+STATIC_URL = '/django-static/'
+STATIC_ROOT = os.environ.get('STATIC_ROOT_OVERRIDE') or (BASE_DIR / 'staticfiles')
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = os.environ.get('MEDIA_ROOT_OVERRIDE') or (BASE_DIR / 'media')
+
+# Dossier du build React à servir (application). Vide = non empaqueté (mode dev
+# où le front tourne séparément).
+FRONTEND_BUILD_DIR = os.environ.get('FRONTEND_BUILD_DIR', '')
 
 STORAGES = {
     # Stockage par défaut des fichiers media (photos élèves, QR codes, etc.).
@@ -247,9 +265,18 @@ SIMPLE_JWT = {
 
 
 # ─── CORS ─────────────────────────────────────────────────────────────────────
+# Origines explicites (override via CORS_ALLOWED_ORIGINS).
 CORS_ALLOWED_ORIGINS = os.environ.get(
-    'CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000'
+    'CORS_ALLOWED_ORIGINS',
+    'http://localhost:5006,http://127.0.0.1:5006,http://localhost:3000,http://127.0.0.1:3000'
 ).split(',')
+# Déploiement LAN : autorise les origines des adresses IP privées (192.168.x.x,
+# 10.x.x.x, 172.16-31.x.x) sur n'importe quel port. Désactivable en prod internet.
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r'^http://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$',
+    r'^http://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$',
+    r'^http://172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}(:\d+)?$',
+]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_METHODS = ['DELETE', 'GET', 'OPTIONS', 'PATCH', 'POST', 'PUT']
 CORS_ALLOW_HEADERS = [
@@ -285,6 +312,23 @@ FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000').rstrip('/
 # ─── Capacité de l'établissement ──────────────────────────────────────────────
 # Nombre maximal d'élèves actifs qu'une école peut contenir.
 MAX_STUDENTS_PER_SCHOOL = int(os.environ.get('MAX_STUDENTS_PER_SCHOOL', '7000'))
+
+# Mode mono-établissement : 1 école par installation (modèle commercial local).
+SINGLE_SCHOOL_MODE = os.environ.get('SINGLE_SCHOOL_MODE', 'True').lower() in ('1', 'true', 'yes')
+
+# ─── Licence ──────────────────────────────────────────────────────────────────
+# Durée de l'essai gratuit (jours) et secret de signature des codes d'activation.
+# IMPORTANT : en production, définir LICENSE_SIGNING_SECRET via l'environnement
+# et le garder confidentiel (il sert à générer/vérifier les codes).
+LICENSE_TRIAL_DAYS = int(os.environ.get('LICENSE_TRIAL_DAYS', '28'))
+# Repli HMAC (dev uniquement) si aucune clé Ed25519 n'est configurée.
+LICENSE_SIGNING_SECRET = os.environ.get('LICENSE_SIGNING_SECRET', 'CHANGE-ME-schoolpro-license-secret')
+# Signature asymétrique Ed25519 (recommandé en production) :
+#  - LICENSE_PUBLIC_KEY  : clé PUBLIQUE (PEM) embarquée dans le build livré → vérifie les codes.
+#  - LICENSE_PRIVATE_KEY : clé PRIVÉE (PEM), UNIQUEMENT chez l'éditeur → génère les codes.
+# Générer une paire : python manage.py generate_license_keys
+LICENSE_PUBLIC_KEY = os.environ.get('LICENSE_PUBLIC_KEY', '').replace('\\n', '\n')
+LICENSE_PRIVATE_KEY = os.environ.get('LICENSE_PRIVATE_KEY', '').replace('\\n', '\n')
 
 
 # ─── Journalisation ───────────────────────────────────────────────────────────

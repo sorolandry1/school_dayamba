@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.http import HttpResponse
 from django.db.models import Sum, Count, Q, Avg as DAvg
-from apps.users.permissions import IsAdmin, IsAdminOrTeacher, CanViewReports, IsCashManager
+from apps.users.permissions import IsAdmin, IsAdminOrTeacher, CanViewReports, IsCashManager, IsPlatformAdmin
 from apps.students.models import Student
 from apps.grades.models import Grade
 from apps.subjects.models import Subject
@@ -20,6 +20,8 @@ from utils.pdf_generator import (
     generate_bulletin_pdf, generate_bulletin_pdf_templated,
     generate_receipt_pdf_templated, generate_card_pdf_templated,
     generate_class_list_pdf, generate_subject_sheet_pdf,
+    generate_student_sheet_pdf, generate_class_roster_pdf, generate_timetable_pdf,
+    generate_teacher_timetable_pdf,
 )
 from django.db.models import Avg, Count, Q
 
@@ -42,6 +44,50 @@ def _ecole_id(request):
     return getattr(selected, 'id', None)
 
 
+def _teacher_class_ids(user):
+    """Ensemble des ids de classes autorisées pour un professeur : ses classes
+    assignées + les classes où il enseigne une matière."""
+    teacher = getattr(user, 'teacher_profile', None)
+    if teacher is None:
+        return set()
+    ids = set(teacher.classes.values_list('id', flat=True))
+    ids |= set(Classe.objects.filter(subjects__teacher=teacher).values_list('id', flat=True))
+    return ids
+
+
+def _teacher_can_access_classe(user, classe_id):
+    """Un professeur ne peut consulter que ses classes assignées ; les autres
+    rôles (admin, directeur, éducateur) ne sont pas restreints ici."""
+    if getattr(user, 'role', None) != 'TEACHER':
+        return True
+    return int(classe_id) in _teacher_class_ids(user)
+
+
+def _bulletin_extra(student, rankings_data, period_raw):
+    """Construit le dict `extra` (période, assiduité, distinction, décision)
+    passé au générateur de bulletin PDF."""
+    from apps.reports.models import PlatformSettings
+    from apps.reports.academics import (
+        normalize_period, period_label, period_date_range,
+        attendance_hours, year_end_decision, distinction,
+    )
+    ps = PlatformSettings.get_solo(ecole=getattr(student, 'ecole', None))
+    system = ps.period_system
+    period = normalize_period(period_raw)
+    is_annual = period is None
+    ay = student.classe.academic_year if student.classe else None
+    start, end = period_date_range(ay, period_raw, system)
+    avg = (rankings_data or {}).get('general_average')
+    return {
+        'period': period,
+        'period_label': period_label(period_raw, system),
+        'attendance': attendance_hours(student, start, end, ps.hours_per_day),
+        'distinction': distinction(avg, ps),
+        'is_annual': is_annual,
+        'decision': year_end_decision(avg, ps) if is_annual else None,
+    }
+
+
 class BulletinPDFView(APIView):
     permission_classes = [CanViewReports]
 
@@ -62,26 +108,31 @@ class BulletinPDFView(APIView):
         if not student:
             return Response({'error': 'Élève non trouvé.'}, status=404)
 
+        period_raw = request.query_params.get('period')
         subjects = Subject.objects.select_related('teacher', 'teacher__user').filter(classe=student.classe)
-        rankings_data = self._calculate_rankings(student)
+        rankings_data = self._calculate_rankings(student, period_raw)
         template_config = self._get_template_config(request)
+        extra = _bulletin_extra(student, rankings_data, period_raw)
 
         # Toujours via le générateur templaté (comme les cartes et les reçus) :
         # le design est personnalisable par l'administrateur ; sinon, valeurs
         # par défaut + identité de l'établissement (Super-Admin).
         pdf_buffer = generate_bulletin_pdf_templated(
-            student, subjects, rankings_data, template_config or {}
+            student, subjects, rankings_data, template_config or {}, extra=extra
         )
 
         response = HttpResponse(pdf_buffer, content_type='application/pdf')
+        suffix = f"_{extra['period']}" if extra.get('period') else '_annuel'
         response['Content-Disposition'] = (
-            f'attachment; filename="bulletin_{student.matricule}.pdf"'
+            f'attachment; filename="bulletin_{student.matricule}{suffix}.pdf"'
         )
         return response
 
-    def _calculate_rankings(self, student):
+    def _calculate_rankings(self, student, period_raw=None):
         if not student.classe:
             return {}
+        from apps.reports.academics import normalize_period
+        period = normalize_period(period_raw)
         subjects = Subject.objects.filter(classe=student.classe)
         students_in_class = Student.objects.filter(classe=student.classe, is_active=True)
         rankings = []
@@ -90,6 +141,8 @@ class BulletinPDFView(APIView):
             total_coeff = 0
             for subj in subjects:
                 grades = Grade.objects.filter(student=s, subject=subj)
+                if period:
+                    grades = grades.filter(period=period)
                 if grades.exists():
                     avg = grades.aggregate(a=Avg('value'))['a']
                     coeff = float(subj.coefficient)
@@ -135,32 +188,41 @@ class BulletinClassePDFView(APIView):
             request=request,
         )
 
+        period_raw = request.query_params.get('period')
         # Pre-calculate rankings for all students once
-        rankings_map = self._calculate_all_rankings(students, subjects)
+        rankings_map = self._calculate_all_rankings(students, subjects, period_raw)
 
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
             for student in students:
                 rankings_data = rankings_map.get(student.id, {})
+                extra = _bulletin_extra(student, rankings_data, period_raw)
                 pdf_buffer = generate_bulletin_pdf_templated(
-                    student, subjects, rankings_data, template_config or {}
+                    student, subjects, rankings_data, template_config or {}, extra=extra
                 )
                 filename = f"bulletin_{student.matricule}_{student.last_name}_{student.first_name}.pdf"
                 zf.writestr(filename, pdf_buffer.read())
 
         zip_buffer.seek(0)
+        from apps.reports.academics import normalize_period
+        psuffix = normalize_period(period_raw)
         safe_name = classe.name.replace(' ', '_').replace('/', '-')
+        safe_name += f"_p{psuffix}" if psuffix else '_annuel'
         response = HttpResponse(zip_buffer, content_type='application/zip')
         response['Content-Disposition'] = f'attachment; filename="bulletins_{safe_name}.zip"'
         return response
 
-    def _calculate_all_rankings(self, students, subjects):
+    def _calculate_all_rankings(self, students, subjects, period_raw=None):
+        from apps.reports.academics import normalize_period
+        period = normalize_period(period_raw)
         averages = []
         for s in students:
             total_weighted = 0
             total_coeff = 0
             for subj in subjects:
                 grades = Grade.objects.filter(student=s, subject=subj)
+                if period:
+                    grades = grades.filter(period=period)
                 if grades.exists():
                     avg = grades.aggregate(a=Avg('value'))['a']
                     total_weighted += float(avg) * float(subj.coefficient)
@@ -277,6 +339,10 @@ class AccountingView(APIView):
         paid = payments_qs.filter(status='PAID')
         produits = float(paid.aggregate(t=Sum('amount'))['t'] or 0)
         charges = float(expenses_qs.aggregate(t=Sum('amount'))['t'] or 0)
+        charges_salaires = float(
+            expenses_qs.filter(category='SALAIRES').aggregate(t=Sum('amount'))['t'] or 0
+        )
+        charges_autres = charges - charges_salaires
         resultat = produits - charges
         creances = float(payments_qs.filter(status__in=['PENDING', 'OVERDUE'])
                          .aggregate(t=Sum('amount'))['t'] or 0)
@@ -291,7 +357,11 @@ class AccountingView(APIView):
         tresorerie = caisse['solde'] + banque['solde']
 
         return Response({
-            'compte_resultat': {'produits': produits, 'charges': charges, 'resultat': resultat},
+            'compte_resultat': {
+                'produits': produits, 'charges': charges,
+                'charges_salaires': charges_salaires, 'charges_autres': charges_autres,
+                'resultat': resultat,
+            },
             'caisse': caisse,
             'banque': banque,
             'bilan': {
@@ -692,8 +762,176 @@ class PaymentReportView(APIView):
         return Response(result)
 
 
+BACKUP_APPS = [
+    'users', 'students', 'teachers', 'classes', 'subjects',
+    'grades', 'attendance', 'payments', 'reports', 'payroll',
+]
+
+
+class BackupView(APIView):
+    """Sauvegarde complète des données (JSON) — réservé à l'administrateur."""
+    permission_classes = [IsPlatformAdmin]
+
+    def get(self, request):
+        from io import StringIO
+        from django.core import management
+        from datetime import date as _d
+        buf = StringIO()
+        management.call_command(
+            'dumpdata', *BACKUP_APPS,
+            '--exclude', 'reports.documenttemplate',  # gabarits volumineux optionnels
+            indent=2, stdout=buf,
+        )
+        data = buf.getvalue().encode('utf-8')
+        resp = HttpResponse(data, content_type='application/json')
+        resp['Content-Disposition'] = f'attachment; filename="sauvegarde_schoolpro_{_d.today()}.json"'
+        return resp
+
+
+class RestoreView(APIView):
+    """Restauration depuis un fichier de sauvegarde JSON — administrateur only.
+
+    Opération sensible : remplace les données par celles du fichier. Exige
+    `confirm=true` pour être exécutée."""
+    permission_classes = [IsPlatformAdmin]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        import os
+        import tempfile
+        from django.core import management
+
+        if str(request.data.get('confirm', '')).lower() not in ('true', '1', 'yes'):
+            return Response({'error': 'Confirmation requise (confirm=true).'}, status=400)
+        f = request.FILES.get('file')
+        if not f:
+            return Response({'error': 'Fichier de sauvegarde requis.'}, status=400)
+        if not f.name.lower().endswith('.json'):
+            return Response({'error': 'Le fichier doit être au format .json.'}, status=400)
+
+        tmp = tempfile.NamedTemporaryFile(suffix='.json', delete=False)
+        try:
+            for chunk in f.chunks():
+                tmp.write(chunk)
+            tmp.close()
+            management.call_command('loaddata', tmp.name)
+        except Exception as exc:
+            return Response({'error': f'Échec de la restauration : {exc}'}, status=400)
+        finally:
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
+
+        from apps.users.models import log_activity
+        log_activity(request.user, 'LOGIN', 'Restauration de sauvegarde effectuée', request)
+        return Response({'message': 'Restauration effectuée avec succès.'})
+
+
+class ClassRosterPDFView(APIView):
+    """Liste des élèves d'une classe (nom, prénom, date et lieu de naissance).
+    Accessible aux professeurs, éducateurs et à l'administration."""
+    permission_classes = [CanViewReports]
+
+    def get(self, request, classe_id):
+        eid = _ecole_id(request)
+        classes = Classe.objects.select_related('academic_year').filter(id=classe_id)
+        if eid:
+            classes = classes.filter(ecole_id=eid)
+        classe = classes.first()
+        if not classe:
+            return Response({'error': 'Classe non trouvée.'}, status=404)
+        if not _teacher_can_access_classe(request.user, classe.id):
+            return Response({'error': "Accès limité à vos classes assignées."}, status=403)
+        students = list(
+            Student.objects.filter(classe=classe, is_active=True).order_by('last_name', 'first_name')
+        )
+        pdf = generate_class_roster_pdf(classe, students)
+        safe = classe.name.replace(' ', '_').replace('/', '-')
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="liste_eleves_{safe}.pdf"'
+        return response
+
+
+class TimetablePDFView(APIView):
+    """Emploi du temps d'une classe en PDF.
+    Accessible aux professeurs, éducateurs et à l'administration."""
+    permission_classes = [CanViewReports]
+
+    def get(self, request, classe_id):
+        from apps.classes.models import ScheduleEntry
+        eid = _ecole_id(request)
+        classes = Classe.objects.select_related('academic_year').filter(id=classe_id)
+        if eid:
+            classes = classes.filter(ecole_id=eid)
+        classe = classes.first()
+        if not classe:
+            return Response({'error': 'Classe non trouvée.'}, status=404)
+        if not _teacher_can_access_classe(request.user, classe.id):
+            return Response({'error': "Accès limité à vos classes assignées."}, status=403)
+        entries = list(
+            ScheduleEntry.objects.select_related('subject')
+            .filter(classe=classe).order_by('day', 'start_time')
+        )
+        pdf = generate_timetable_pdf(classe, entries)
+        safe = classe.name.replace(' ', '_').replace('/', '-')
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="emploi_du_temps_{safe}.pdf"'
+        return response
+
+
+class TeacherTimetablePDFView(APIView):
+    """Emploi du temps d'un professeur. Un professeur obtient le sien ;
+    admin/directeur/éducateur peuvent demander celui d'un professeur donné."""
+    permission_classes = [CanViewReports]
+
+    def get(self, request, teacher_id=None):
+        from apps.teachers.models import Teacher
+        from apps.classes.models import ScheduleEntry
+        eid = _ecole_id(request)
+
+        if teacher_id and request.user.role in ('ADMIN', 'DIRECTOR', 'EDUCATEUR'):
+            qs = Teacher.objects.select_related('user').filter(id=teacher_id)
+            if eid:
+                qs = qs.filter(ecole_id=eid)
+            teacher = qs.first()
+        else:
+            teacher = getattr(request.user, 'teacher_profile', None)
+
+        if not teacher:
+            return Response({'error': 'Professeur non trouvé.'}, status=404)
+
+        entries = list(
+            ScheduleEntry.objects.select_related('subject', 'classe')
+            .filter(subject__teacher=teacher).order_by('day', 'start_time')
+        )
+        pdf = generate_teacher_timetable_pdf(teacher, entries)
+        safe = (teacher.full_name or 'prof').replace(' ', '_').replace('/', '-')
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="emploi_du_temps_{safe}.pdf"'
+        return response
+
+
+class StudentSheetPDFView(APIView):
+    """Fiche élève PDF (identité, scolarité, parent, situation financière)."""
+    permission_classes = [CanViewReports]
+
+    def get(self, request, student_id):
+        eid = _ecole_id(request)
+        students = Student.objects.select_related('classe', 'classe__academic_year').filter(id=student_id)
+        if eid:
+            students = students.filter(ecole_id=eid)
+        student = students.first()
+        if not student:
+            return Response({'error': 'Élève non trouvé.'}, status=404)
+        pdf = generate_student_sheet_pdf(student)
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="fiche_{student.matricule}.pdf"'
+        return response
+
+
 class ExcelExportView(APIView):
-    """Export grades, absences, or payments to Excel."""
+    """Export grades, absences, payments, rankings ou students to Excel."""
     permission_classes = [IsAdmin]
 
     def get(self, request):
@@ -851,6 +1089,37 @@ class ExcelExportView(APIView):
                 style_row(i + 2, len(headers), i % 2 == 0)
 
             col_widths = [8, 28, 14, 18, 15]
+
+        elif export_type == 'students':
+            ws.title = 'Élèves'
+            headers = ['Matricule', 'Nom', 'Prénom', 'Genre', 'Date de naissance',
+                       'Lieu de naissance', 'Classe', 'Parent', 'Téléphone parent',
+                       'Email parent', 'Statut paiement', 'Actif']
+            ws.append(headers)
+            style_header(1, len(headers))
+
+            qs = Student.objects.select_related('classe').all()
+            if _eid:
+                qs = qs.filter(ecole_id=_eid)
+            if classe_id:
+                qs = qs.filter(classe_id=classe_id)
+            qs = qs.order_by('last_name', 'first_name')
+
+            pay_map = dict(Student.PaymentStatus.choices)
+            for i, s in enumerate(qs):
+                row = [
+                    s.matricule, s.last_name, s.first_name, s.get_gender_display(),
+                    str(s.date_of_birth) if s.date_of_birth else '—',
+                    s.birth_place or '—',
+                    s.classe.name if s.classe else '—',
+                    s.parent_name or '—', s.parent_phone or '—', s.parent_email or '—',
+                    pay_map.get(s.payment_status, s.payment_status),
+                    'Oui' if s.is_active else 'Non',
+                ]
+                ws.append(row)
+                style_row(i + 2, len(headers), i % 2 == 0)
+
+            col_widths = [16, 16, 16, 10, 15, 16, 12, 20, 15, 22, 14, 8]
 
         else:
             return Response({'error': 'type invalide'}, status=400)
@@ -1159,6 +1428,8 @@ class ClassListPDFView(APIView):
         classe = classes.first()
         if not classe:
             return Response({'error': 'Classe non trouvée.'}, status=404)
+        if not _teacher_can_access_classe(request.user, classe.id):
+            return Response({'error': "Accès limité à vos classes assignées."}, status=403)
 
         students = Student.objects.filter(classe=classe, is_active=True)
         subjects = list(Subject.objects.filter(classe=classe).order_by('name'))

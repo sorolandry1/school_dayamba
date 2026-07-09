@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { FiUser, FiPhone, FiMail, FiBook, FiSave, FiKey, FiX } from 'react-icons/fi';
+import { FiUser, FiPhone, FiMail, FiBook, FiSave, FiKey, FiX, FiClock } from 'react-icons/fi';
+import { downloadFile } from '../../utils/downloadPdf';
 
 function TeacherProfile() {
   const { user } = useAuth();
@@ -66,9 +67,14 @@ function TeacherProfile() {
           <h2>Mon Profil</h2>
           <p>Informations personnelles et paramètres du compte</p>
         </div>
-        <button className="btn btn-secondary" onClick={() => setShowPwdModal(true)}>
-          <FiKey size={15} /> Changer le mot de passe
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary" onClick={() => downloadFile('/reports/teacher-timetable/', 'mon_emploi_du_temps.pdf')}>
+            <FiClock size={15} /> Mon emploi du temps
+          </button>
+          <button className="btn btn-secondary" onClick={() => setShowPwdModal(true)}>
+            <FiKey size={15} /> Changer le mot de passe
+          </button>
+        </div>
       </div>
 
       {/* Avatar + identité */}

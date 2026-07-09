@@ -18,6 +18,48 @@ from apps.payments.models import Payment
 logger = logging.getLogger('apps')
 
 
+def _scan_student_info(student):
+    """Infos élève renvoyées au scan, avec le **statut de scolarité** (à jour ou
+    non) pour l'agent, et l'id pour l'accès au dossier complet (dir./éducateur)."""
+    info = {
+        'id': student.id,
+        'name': student.full_name,
+        'matricule': student.matricule,
+        'classe': student.classe.name if student.classe else '',
+        'photo': student.photo.url if student.photo else None,
+    }
+    try:
+        from apps.payments.pension import build_pension_situation
+        situ = build_pension_situation(student)
+        reste = situ['reste']
+        overdue = any(t.get('overdue') for t in situ.get('tranches', []))
+        if reste <= 0:
+            statut, label = 'A_JOUR', 'À jour'
+        elif overdue:
+            statut, label = 'EN_RETARD', 'En retard'
+        else:
+            statut, label = 'EN_COURS', 'Reste à payer'
+        info['scolarite'] = {
+            'a_jour': reste <= 0,
+            'statut': statut,
+            'label': label,
+            'reste': reste,
+            'total_paid': situ['total_paid'],
+            'net_due': situ['net_due'],
+            'next_due_date': situ.get('next_due_date'),
+            'payment_status': student.payment_status,
+        }
+    except Exception:
+        ps = student.payment_status
+        info['scolarite'] = {
+            'a_jour': ps == 'PAID',
+            'statut': 'A_JOUR' if ps == 'PAID' else ('EN_RETARD' if ps == 'OVERDUE' else 'EN_COURS'),
+            'label': student.get_payment_status_display(),
+            'payment_status': ps,
+        }
+    return info
+
+
 class AttendanceViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
     ecole_lookup = 'student__ecole'
     queryset = Attendance.objects.select_related('student', 'student__classe', 'scanned_by').all()
@@ -58,7 +100,8 @@ class AttendanceViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
             if not created and attendance.check_in:
                 return Response(
                     {'warning': 'Présence déjà enregistrée pour aujourd\'hui.',
-                     'attendance': AttendanceSerializer(attendance).data}
+                     'attendance': AttendanceSerializer(attendance).data,
+                     'student': _scan_student_info(student)}
                 )
 
             if not created:
@@ -105,12 +148,7 @@ class AttendanceViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
             return Response({
                 'message': f'{student.full_name} - Entrée enregistrée à {current_time.strftime("%H:%M")}',
                 'attendance': AttendanceSerializer(attendance).data,
-                'student': {
-                    'id': student.id,
-                    'name': student.full_name,
-                    'classe': student.classe.name if student.classe else '',
-                    'photo': student.photo.url if student.photo else None,
-                }
+                'student': _scan_student_info(student),
             })
 
         elif scan_type == 'OUT':
@@ -156,6 +194,7 @@ class AttendanceViewSet(EcoleScopedMixin, viewsets.ModelViewSet):
             return Response({
                 'message': f'{student.full_name} - Sortie enregistrée à {current_time.strftime("%H:%M")}',
                 'attendance': AttendanceSerializer(attendance).data,
+                'student': _scan_student_info(student),
             })
 
     @action(detail=False, methods=['get'])

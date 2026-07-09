@@ -72,6 +72,26 @@ class PlatformSettings(models.Model):
     school_type = models.CharField(max_length=20, blank=True, default='all')
     bulletin_header = models.TextField(blank=True, default='')
     logo = models.ImageField(upload_to='platform/', blank=True, null=True)
+    # ── Numérotation configurable (par établissement) ──
+    # Jetons supportés : {AAAA} année, {AA} année sur 2 chiffres,
+    # {SEQ} compteur, {SEQ:0004} compteur zéro-préfixé sur N chiffres.
+    matricule_format = models.CharField(max_length=100, blank=True, default='')
+    matricule_counter = models.PositiveIntegerField(default=0)
+    receipt_format = models.CharField(max_length=100, blank=True, default='')
+    receipt_counter = models.PositiveIntegerField(default=0)
+    # ── Bulletins : découpage de l'année, assiduité, règles de décision ──
+    class PeriodSystem(models.TextChoices):
+        TRIMESTER = 'TRIMESTER', 'Trimestres (3)'
+        SEMESTER = 'SEMESTER', 'Semestres (2)'
+
+    period_system = models.CharField(
+        max_length=12, choices=PeriodSystem.choices, default=PeriodSystem.TRIMESTER
+    )
+    # Nombre d'heures de cours par jour (calcul des absences horaires)
+    hours_per_day = models.DecimalField(max_digits=4, decimal_places=1, default=6)
+    # Surcharges optionnelles des règles de décision de fin d'année et des
+    # distinctions (seuils / libellés). Valeurs par défaut dans academics.py.
+    decision_rules = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

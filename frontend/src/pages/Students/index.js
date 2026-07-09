@@ -12,6 +12,7 @@ const emptyForm = {
   first_name: '', last_name: '', gender: 'M', classe: '',
   date_of_birth: '', birth_place: '', nationality: '',
   parent_name: '', parent_phone: '', parent_email: '', address: '',
+  discount_type: 'NONE', discount_value: '', discount_reason: '',
   photo: null,  // File object
 };
 
@@ -149,6 +150,9 @@ function Students() {
       parent_phone: student.parent_phone || '',
       parent_email: student.parent_email || '',
       address: student.address || '',
+      discount_type: student.discount_type || 'NONE',
+      discount_value: (student.discount_value != null && Number(student.discount_value) !== 0) ? String(student.discount_value) : '',
+      discount_reason: student.discount_reason || '',
       photo: null,
     });
     setPhotoPreview(student.photo_url || null);
@@ -202,6 +206,13 @@ function Students() {
             style={{ display: 'flex', alignItems: 'center', gap: 6 }}
           >
             <FiFileText size={15} /> Imprimer la liste
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => downloadFile(`/reports/export/?type=students${filterClasse ? `&classe_id=${filterClasse}` : ''}`, 'eleves.xlsx')}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <FiDownload size={15} /> Exporter Excel
           </button>
           <button
             className="btn btn-secondary"
@@ -277,6 +288,7 @@ function Students() {
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button className="btn btn-sm btn-secondary" title="Fiche complète" onClick={() => navigate(`/students/${s.id}`)}><FiFileText size={14} /></button>
+                        <button className="btn btn-sm btn-secondary" title="Fiche élève PDF" onClick={() => downloadFile(`/reports/student-sheet/${s.id}/`, `fiche_${s.matricule}.pdf`)}><FiDownload size={14} /></button>
                         <button className="btn btn-sm btn-secondary" title="Voir profil" onClick={() => handleViewProfile(s)}><FiEye size={14} /></button>
                         <button className="btn btn-sm btn-secondary" onClick={() => handleEdit(s)}><FiEdit2 size={14} /></button>
                         <button className="btn btn-sm btn-danger" onClick={() => handleDelete(s.id)}><FiTrash2 size={14} /></button>
@@ -469,6 +481,33 @@ function Students() {
                     <input className="form-control" value={form.address} onChange={e => setForm({...form, address: e.target.value})} />
                   </div>
                 </div>
+                <div style={{ borderTop: '1px solid #eef0f4', margin: '4px 0 12px' }} />
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Remise sur la scolarité</label>
+                    <select className="form-control" value={form.discount_type}
+                      onChange={e => setForm({ ...form, discount_type: e.target.value })}>
+                      <option value="NONE">Aucune</option>
+                      <option value="PERCENT">Pourcentage (%)</option>
+                      <option value="FIXED">Montant fixe (FCFA)</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>{form.discount_type === 'PERCENT' ? 'Valeur (%)' : 'Valeur (FCFA)'}</label>
+                    <input type="number" min={0} step={form.discount_type === 'PERCENT' ? 1 : 1000}
+                      className="form-control" value={form.discount_value}
+                      disabled={form.discount_type === 'NONE'}
+                      onChange={e => setForm({ ...form, discount_value: e.target.value })} />
+                  </div>
+                </div>
+                {form.discount_type !== 'NONE' && (
+                  <div className="form-group">
+                    <label>Motif de la remise</label>
+                    <input className="form-control" placeholder="ex: Bourse, Fratrie, Personnel…"
+                      value={form.discount_reason}
+                      onChange={e => setForm({ ...form, discount_reason: e.target.value })} />
+                  </div>
+                )}
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Annuler</button>

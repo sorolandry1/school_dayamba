@@ -1,10 +1,11 @@
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.http import JsonResponse
 from django.utils import timezone
 from django.db import connection
+from config.spa import spa_serve
 
 
 def health_check(request):
@@ -36,7 +37,19 @@ urlpatterns = [
     path('api/attendance/', include('apps.attendance.urls')),
     path('api/payments/', include('apps.payments.urls')),
     path('api/reports/', include('apps.reports.urls')),
+    path('api/payroll/', include('apps.payroll.urls')),
+    path('api/license/', include('apps.licensing.urls')),
+    path('api/schoolyear/', include('apps.schoolyear.urls')),
 ]
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# Media servi aussi hors DEBUG lorsque l'app est empaquetée (un seul port).
+if settings.FRONTEND_BUILD_DIR and not settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# ─── Application React (build) : catch-all EN DERNIER ────────────────────────
+# Ne s'active que si un build est empaqueté ; sinon (dev) le front tourne à part.
+if settings.FRONTEND_BUILD_DIR:
+    urlpatterns += [re_path(r'^(?P<path>.*)$', spa_serve)]

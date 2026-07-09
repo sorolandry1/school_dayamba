@@ -9,8 +9,11 @@ class PlatformSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlatformSettings
         fields = ['id', 'ecole_id', 'school_name', 'school_year', 'school_type',
-                  'bulletin_header', 'logo', 'logo_url', 'updated_at']
-        read_only_fields = ['id', 'updated_at', 'ecole_id']
+                  'bulletin_header', 'logo', 'logo_url',
+                  'matricule_format', 'matricule_counter',
+                  'receipt_format', 'receipt_counter',
+                  'period_system', 'hours_per_day', 'decision_rules', 'updated_at']
+        read_only_fields = ['id', 'updated_at', 'ecole_id', 'matricule_counter', 'receipt_counter']
         extra_kwargs = {'logo': {'write_only': True, 'required': False}}
 
     def get_logo_url(self, obj):

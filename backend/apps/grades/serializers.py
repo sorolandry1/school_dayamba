@@ -11,7 +11,7 @@ class GradeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Grade
         fields = ['id', 'student', 'student_name', 'subject', 'subject_name',
-                  'value', 'max_value', 'normalized_value', 'type_evaluation',
+                  'value', 'max_value', 'normalized_value', 'period', 'type_evaluation',
                   'comment', 'date', 'created_by', 'created_by_name', 'updated_at']
         read_only_fields = ['created_by', 'date', 'updated_at']
 
@@ -27,7 +27,7 @@ class GradeSerializer(serializers.ModelSerializer):
 class GradeCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Grade
-        fields = ['student', 'subject', 'value', 'max_value', 'type_evaluation', 'comment']
+        fields = ['student', 'subject', 'value', 'max_value', 'period', 'type_evaluation', 'comment']
 
     def validate_value(self, value):
         if value < 0:

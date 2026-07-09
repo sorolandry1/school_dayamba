@@ -10,6 +10,9 @@ class Grade(models.Model):
     )
     value = models.DecimalField(max_digits=5, decimal_places=2)
     max_value = models.DecimalField(max_digits=5, decimal_places=2, default=20.00)
+    # Période scolaire : 1/2/3 (trimestres) ou 1/2 (semestres) selon le réglage
+    # de l'établissement. Sert à produire des bulletins périodiques et annuels.
+    period = models.PositiveSmallIntegerField(default=1)
     # Type d'évaluation libre (saisi par le professeur) — ex. « Devoir », « Interrogation »…
     type_evaluation = models.CharField(max_length=50, default='Devoir')
     comment = models.TextField(blank=True, default='')

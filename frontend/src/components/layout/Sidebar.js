@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
 import React, { useState } from 'react';
 import api from '../../services/api';
+import { SINGLE_SCHOOL_MODE } from '../../config';
 import {
   FiHome, FiUsers, FiBook, FiClipboard, FiDollarSign,
   FiBarChart2, FiCamera, FiLogOut, FiGrid,
@@ -165,11 +166,13 @@ function Sidebar({ isOpen, onClose }) {
     ...(modules.communications !== false ? [{ to: '/communications', icon: <FiMessageSquare />, label: t('sidebar.links.communications') }] : []),
     ...(modules.subjects !== false ? [{ to: '/subjects', icon: <FiBook />, label: t('sidebar.links.subjects') }] : []),
     ...(modules.expenses !== false ? [{ to: '/expenses', icon: <FiDollarSign />, label: t('sidebar.links.expenses') }] : []),
+    { to: '/payroll', icon: <FiUsers />, label: t('sidebar.links.payroll', { defaultValue: 'Salaires & Personnel' }) },
     { to: '/accounting', icon: <FiBriefcase />, label: t('sidebar.links.accounting', { defaultValue: 'Comptabilité' }) },
+    { to: '/etablissement', icon: <FiHome />, label: t('sidebar.links.establishment', { defaultValue: 'Paramètres établissement' }) },
     { to: '/users', icon: <FiShield />, label: t('sidebar.links.users') },
     ...(modules.logs !== false ? [{ to: '/logs', icon: <FiActivity />, label: t('sidebar.links.logs') }] : []),
     ...(user?.role === 'ADMIN' ? [
-      { to: '/schools', icon: <FiHome />, label: t('sidebar.links.schools', { defaultValue: 'Établissements' }) },
+      ...(SINGLE_SCHOOL_MODE ? [] : [{ to: '/schools', icon: <FiHome />, label: t('sidebar.links.schools', { defaultValue: 'Établissements' }) }]),
       { to: '/super-admin', icon: <FiSettings />, label: t('sidebar.links.super_admin') },
       { to: '/document-editor', icon: <FiLayout />, label: 'Éditeur de documents' },
     ] : []),
@@ -213,6 +216,7 @@ function Sidebar({ isOpen, onClose }) {
     { section: t('sidebar.sections.administration') },
     { to: '/payments', icon: <FiDollarSign />, label: t('sidebar.links.payments') },
     { to: '/expenses', icon: <FiDollarSign />, label: t('sidebar.links.expenses') },
+    { to: '/payroll', icon: <FiUsers />, label: t('sidebar.links.payroll', { defaultValue: 'Salaires & Personnel' }) },
     { to: '/accounting', icon: <FiBriefcase />, label: t('sidebar.links.accounting', { defaultValue: 'Comptabilité' }) },
   ];
 
@@ -291,6 +295,19 @@ function Sidebar({ isOpen, onClose }) {
           }}
         >
           Mooré
+        </button>
+        <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.75rem' }}>|</span>
+        <button
+          onClick={() => switchLang('en')}
+          style={{
+            background: currentLang === 'en' ? 'rgba(255,255,255,0.18)' : 'none',
+            border: 'none', borderRadius: 6,
+            color: currentLang === 'en' ? 'white' : 'rgba(255,255,255,0.45)',
+            fontWeight: currentLang === 'en' ? 700 : 400,
+            fontSize: '0.75rem', padding: '3px 8px', cursor: 'pointer',
+          }}
+        >
+          English
         </button>
       </div>
 

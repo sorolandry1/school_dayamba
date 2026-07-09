@@ -1,629 +1,250 @@
-# SchoolPro — Plateforme de Gestion Scolaire
+# SchoolPro — Plateforme de gestion scolaire
 
-Application web complète de gestion scolaire — Django REST + React + PostgreSQL, dockerisée.
+SchoolPro est une application web de gestion scolaire développée avec Django REST Framework pour le backend et React pour le frontend. Elle couvre les principaux flux d’un établissement : élèves, classes, matières, notes, présences, paiements, rapports, communications et administration.
 
-**Responsable :** AMADOU DAYAMBA · **Version :** 3.0
+## Ce que contient l’application
 
----
+La version actuelle du projet expose notamment :
 
-## Table des matières
+- une authentification JWT avec rôles utilisateurs
+- une gestion des élèves avec génération de matricule et de QR code
+- une gestion des classes, niveaux et matières
+- une saisie et consultation des notes
+- un module de scan QR pour les présences
+- un suivi des paiements et des dépenses
+- des rapports, exports et génération de bulletins
+- un tableau de bord adapté selon le profil utilisateur
 
-1. [Aperçu fonctionnel](#aperçu-fonctionnel)
-2. [Architecture technique](#architecture-technique)
-3. [Démarrage rapide (Docker)](#démarrage-rapide-avec-docker)
-4. [Installation manuelle](#sans-docker-installation-manuelle)
-5. [Structure du projet](#structure-du-projet)
-6. [Modules backend](#modules-backend)
-7. [Pages frontend par rôle](#pages-frontend-par-rôle)
-8. [Notifications (SMS / WhatsApp / Email)](#notifications-sms--whatsapp--email)
-9. [Sécurité](#sécurité)
-10. [Performance & disponibilité](#performance--disponibilité)
-11. [Variables d'environnement](#variables-denvironnement)
-12. [Commandes utiles](#commandes-utiles)
-13. [Tests de charge](#tests-de-charge)
+## Stack technique
 
----
+- Backend : Django 5.1.4 + Django REST Framework 3.15.2
+- Frontend : React 18.3.1 + React Router 6
+- Base de données : SQLite par défaut en local, PostgreSQL via Docker
+- Authentification : JWT avec SimpleJWT
+- Notifications : Twilio (SMS/WhatsApp), email SMTP ou console en développement
+- Conteneurisation : Docker Compose
 
-## Aperçu fonctionnel
+## Structure du dépôt
 
-SchoolPro couvre l'ensemble du cycle de gestion d'un établissement scolaire :
+```text
+backend/          # API Django REST
+frontend/         # Application React
+Dockerfile        # (si utilisé via Docker)
+docker-compose.yml
+docker-compose.dev.yml
+Makefile
+```
 
-| Domaine | Fonctionnalités |
-|---|---|
-| Élèves | Inscription, fiche complète, QR code unique, statut paiement |
-| Classes | Organisation par niveau, liste enrichie (moyenne, absences, paiement) |
-| Matières | Gestion avec coefficient, affectation aux professeurs |
-| Notes | CRUD multi-type (devoir, examen, oral), historique des modifications |
-| Présences | Scan QR entrée/sortie, horodatage, notification tricanal (SMS + WhatsApp + Email) |
-| Paiements | Suivi par élève, statut (payé/en attente/en retard), reçu généré |
-| Dépenses | Gestion des charges par catégorie, bilan financier temps réel |
-| Bulletins | PDF automatique (ReportLab), rang, moyenne pondérée, appréciation |
-| Rapports | Absences, paiements, classements, exports Excel, PDF d'absences journalières/hebdomadaires/mensuelles |
-| Communications | Broadcast SMS, WhatsApp et Email aux parents par classe ou établissement |
-| Espace enseignant | Tableau de bord, saisie des notes, cahier de texte (LessonLog) |
-| Journal d'activité | Audit complet des actions (connexions, modifications de notes, etc.) |
+## Prérequis
 
----
-
-## Architecture technique
-
-| Composant | Technologie |
-|---|---|
-| Backend | Django 5.1 + Django REST Framework 3.15 |
-| Frontend | React 18 + React Router v6 |
-| Base de données | PostgreSQL 16 (SQLite en dev local) |
-| Authentification | JWT — SimpleJWT (access + refresh + rotation + blacklist) |
-| SMS | Twilio / Orange API / SMS Gateway local |
-| WhatsApp | WhatsApp Business API via Twilio |
-| Email | Django Email Backend (SMTP Gmail ou console en dev) |
-| QR Code | Bibliothèque Python `qrcode` + scanner mobile (caméra) |
-| PDF | ReportLab 4.2 |
-| Excel | openpyxl 3.1 |
-| Cache | LocMemCache (dev) — Redis-ready via `REDIS_URL` |
-| Serveur web | Gunicorn + Nginx (Docker prod) |
-| Conteneurisation | Docker + Docker Compose |
-| Tests de charge | Locust 2.32 |
-
----
+- Python 3.11+ (recommandé 3.12)
+- Node.js 20+
+- Docker Desktop / Docker Compose si vous souhaitez utiliser les conteneurs
 
 ## Démarrage rapide avec Docker
 
-### Prérequis
-
-- Docker et Docker Compose installés
-
-### Lancer en une seule commande
+Depuis la racine du projet :
 
 ```bash
 docker compose up -d --build
 ```
 
-Environ 1-2 minutes (build + migrations + seed), puis ouvrir :
+Une fois les services lancés, les URLs suivantes sont disponibles :
 
-| URL | Description |
-|---|---|
-| http://localhost:3000 | Application React |
-| http://localhost:8000/api | API REST Django |
-| http://localhost:8000/admin | Interface d'administration Django |
-| http://localhost:8000/api/health/ | Health check (DB + version) |
+- http://localhost:3000 : interface frontend
+- http://localhost:8000/api : API Django
+- http://localhost:8000/admin : administration Django
+- http://localhost:8000/api/health/ : vérification de santé de l’API
 
-Les données de test (élèves, professeurs, classes, matières, notes) sont **chargées automatiquement** au premier démarrage.
-
-### Comptes prêts à utiliser
-
-| Rôle | Identifiant | Mot de passe | Redirige vers |
-|---|---|---|---|
-| Directeur | `directeur` | `directeur123` | `/dashboard` |
-| Admin | `admin` | `admin123` | `/dashboard` |
-| Prof Maths | `prof_math` | `prof123` | `/teacher` |
-| Prof Français | `prof_fr` | `prof123` | `/teacher` |
-| Prof Anglais | `prof_ang` | `prof123` | `/teacher` |
-| Prof SVT | `prof_svt` | `prof123` | `/teacher` |
-| Prof Physique | `prof_phys` | `prof123` | `/teacher` |
-| Prof Histoire | `prof_hist` | `prof123` | `/teacher` |
-| Agent accueil | `agent` | `agent123` | `/scan` |
-
-### Données générées automatiquement
-
-| Entité | Quantité |
-|---|---|
-| Classes | 8 (6ème A/B, 5ème A/B, 4ème A/B, 3ème A/B) |
-| Élèves | ~272 avec QR codes, parents, dates de naissance |
-| Matières | 48 (6 par classe : Maths, Français, Anglais, SVT, PC, Hist-Géo) |
-| Notes | ~4 900 (3 types : Devoir, Interrogation, Examen) |
-| Paiements | ~816 (70% payé · 20% en attente · 10% en retard) |
-| Présences | Semaine courante (70% présent · 15% retard · 15% absent) |
-
----
-
-## Sans Docker (installation manuelle)
+### Mode développement avec hot reload
 
 ```bash
-# ── Backend ──────────────────────────────────────────────────
+docker compose -f docker-compose.dev.yml up --build
+```
+
+## Démarrage manuel
+
+### Backend
+
+```bash
 cd backend
-
-# Créer et activer l'environnement virtuel
 python -m venv .venv
-source .venv/bin/activate        # Linux / Mac
-# .venv\Scripts\activate         # Windows
-
+source .venv/bin/activate      # Linux/macOS
+.\.venv\Scripts\Activate.ps1  # PowerShell (Windows)
 pip install -r requirements.txt
-
-# Le fichier .env est déjà prêt avec les valeurs par défaut
-# (SQLite + console email + pas de SMS réel)
 python manage.py migrate
-python manage.py seed_data       # charge ~272 élèves, 4900 notes, 816 paiements...
+python manage.py seed_data
+python manage.py runserver
+```
 
-python manage.py runserver       # démarre sur http://127.0.0.1:8000
+Le backend sera disponible sur http://127.0.0.1:8000.
 
-# ── Frontend (autre terminal) ─────────────────────────────────
+### Frontend
+
+```bash
 cd frontend
-# Le fichier .env est prêt : REACT_APP_API_URL=http://127.0.0.1:8000/api
 npm install
-npm start                        # démarre sur http://localhost:3000
+npm start
 ```
 
-### Réinitialiser les données
+Le frontend sera disponible sur http://localhost:3000.
+
+## Comptes de démonstration
+
+Le seed de données crée des comptes de test :
+
+| Rôle | Identifiant | Mot de passe |
+|---|---|---|
+| Directeur | directeur | directeur123 |
+| Administrateur | admin | admin123 |
+| Professeur de mathématiques | prof_math | prof123 |
+| Professeur de français | prof_fr | prof123 |
+| Agent d’accueil | agent | agent123 |
+
+## Routes principales du frontend
+
+L’application contient des vues protégées selon les rôles suivants :
+
+- ADMIN / DIRECTOR : tableau de bord, élèves, classes, matières, notes, paiements, rapports, utilisateurs, journaux
+- TEACHER : tableau de bord enseignant, profil, saisie des notes, cahier de texte
+- AGENT : scan QR et suivi des présences
+- EDUCATEUR / CAISSE : vues spécifiques ajoutées dans l’interface
+
+Routes principales :
+
+- /login
+- /dashboard
+- /students
+- /classes
+- /subjects
+- /grades
+- /attendance
+- /payments
+- /expenses
+- /reports
+- /communications
+- /teacher
+- /teacher/grades
+- /teacher/profile
+- /teacher/lessons
+- /scan
+- /register/:token
+- /forgot-password
+- /reset-password/:token
+
+## API principale
+
+Les endpoints sont regroupés sous les préfixes suivants :
+
+- /api/auth/ : authentification, invitations, réinitialisation de mot de passe
+- /api/students/ : gestion des élèves
+- /api/teachers/ : profils et statistiques enseignants
+- /api/classes/ : classes et niveaux
+- /api/subjects/ : matières
+- /api/grades/ : notes
+- /api/attendance/ : présences et scan QR
+- /api/payments/ : paiements et dépenses
+- /api/reports/ : tableaux de bord et exports
+- /api/health/ : contrôle de santé
+
+## Données de test
+
+La commande suivante charge des données de démonstration :
 
 ```bash
-python manage.py seed_data --reset   # supprime tout et re-seed
+python manage.py seed_data
 ```
 
----
-
-## Structure du projet
-
-```
-school_dayamba/
-├── docker-compose.yml           # Production (PostgreSQL + Gunicorn + Nginx)
-├── docker-compose.dev.yml       # Développement (hot reload)
-├── Makefile                     # Raccourcis make
-├── .env                         # Variables d'environnement
-│
-├── backend/
-│   ├── Dockerfile               # Python 3.12-slim
-│   ├── entrypoint.sh            # Attend DB → migrate → seed → start
-│   ├── requirements.txt
-│   ├── locustfile.py            # Tests de charge (100 utilisateurs)
-│   │
-│   ├── config/
-│   │   ├── settings.py          # Configuration complète (sécurité, cache, logs)
-│   │   ├── middleware.py        # SecurityHeadersMiddleware (CSP, Permissions-Policy…)
-│   │   └── urls.py              # Routes + endpoint /api/health/
-│   │
-│   ├── apps/
-│   │   ├── users/               # Authentification JWT, RBAC, journaux d'activité
-│   │   │   └── management/commands/
-│   │   │       ├── backup_db.py                  # Sauvegarde SQLite / pg_dump
-│   │   │       ├── seed_data.py                  # Données de test
-│   │   │       └── send_absence_notifications.py # Alertes absences (SMS+WA+Email)
-│   │   ├── students/            # Élèves, QR codes, class_summary enrichi
-│   │   ├── classes/             # Niveaux, classes, année scolaire
-│   │   ├── subjects/            # Matières avec coefficient
-│   │   ├── grades/              # Notes + historique des modifications
-│   │   ├── attendance/          # Présences QR, notifications tricanal
-│   │   ├── payments/            # Paiements, dépenses, broadcast SMS/WA/Email
-│   │   ├── teachers/            # Profil, dashboard stats (mis en cache), LessonLog
-│   │   └── reports/             # PDF, Excel, dashboard admin (mis en cache)
-│   │
-│   └── utils/
-│       ├── sms_service.py       # Twilio SMS
-│       ├── whatsapp_service.py  # WhatsApp Business API (Twilio)
-│       ├── email_service.py     # Email transactionnel + bulk (5 templates)
-│       ├── qr_generator.py      # Génération QR code élève
-│       └── pdf_generator.py     # Bulletin PDF (ReportLab)
-│
-└── frontend/
-    ├── Dockerfile               # Node build → Nginx serve
-    ├── nginx.conf               # Proxy /api → backend + SPA routing
-    └── src/
-        ├── App.js               # Routes par rôle (DIRECTOR / TEACHER / AGENT)
-        ├── services/api.js      # Axios + intercepteur JWT + file d'attente 401
-        ├── components/
-        │   └── layout/Sidebar.js
-        └── pages/
-            ├── AdminDashboard/       # KPIs temps réel, dépenses, solde net
-            ├── Students/             # Liste, recherche, filtre, CRUD
-            ├── StudentDetail/        # Fiche complète (notes, absences, paiements)
-            ├── Classes/              # Arbre niveau → classe → élèves (moyenne + absences)
-            ├── Subjects/             # Matières avec coefficient et prof affecté
-            ├── Teachers/             # Liste des professeurs
-            ├── TeacherProfile/       # Profil enseignant
-            ├── TeacherDashboard/     # Stats matières, derniers cours, accès rapide
-            ├── GradesManagement/     # Saisie et gestion des notes
-            ├── LessonLog/            # Cahier de texte avec barre de progression
-            ├── AttendanceScanner/    # Scanner QR (entrée / sortie)
-            ├── Payments/             # Suivi des paiements
-            ├── Expenses/             # Gestion des dépenses (7 catégories)
-            ├── Reports/              # 4 onglets : performance, absences, paiements, bulletins
-            ├── Bulletins/            # Génération PDF individuelle / ZIP classe
-            ├── Communications/       # Broadcast SMS + WhatsApp + Email aux parents
-            ├── ActivityLogs/         # Journal d'audit (Directeur)
-            ├── Users/                # Gestion des utilisateurs
-            └── Login/                # Authentification JWT
-```
-
----
-
-## Modules backend
-
-### Authentification (`apps/users`)
-
-- JWT avec `SimpleJWT` — access token (15 min) + refresh token (7 jours)
-- Rotation automatique des refresh tokens + blacklist à la déconnexion
-- `LoginRateThrottle` : max 10 tentatives/minute par IP
-- RBAC : `DIRECTOR` · `ADMIN` · `TEACHER` · `AGENT`
-- Journal d'activité : toutes les actions sensibles sont loguées (`ActivityLog`)
-- **Création d'utilisateur enrichie** : à la création d'un professeur, le directeur peut lui affecter directement une ou plusieurs matières (le profil `Teacher` est créé automatiquement)
-
-#### Liens d'inscription (auto-enregistrement)
-
-Le directeur génère un **lien d'invitation** (modèle `Invitation`) pour un professeur ou un agent, qui crée lui-même son compte :
-
-- `POST /auth/invitations/` — génère un lien (rôle, repère, expiration facultative) · admin/directeur
-- `GET /auth/invitations/` · `DELETE /auth/invitations/{id}/` — liste / révocation
-- `GET /auth/register/<token>/` — **public** : valide le lien (renvoie le rôle ; pour un professeur, la liste des matières disponibles)
-- `POST /auth/register/<token>/` — **public** : crée le compte (champs obligatoires, mot de passe robuste) et connecte automatiquement
-
-Le lien est à **usage unique**, peut **expirer**, et un professeur peut **choisir ses matières** au moment de s'inscrire.
-
-#### Réinitialisation de mot de passe (« mot de passe oublié »)
-
-- `POST /auth/password-reset/request/` — **public** : envoie un lien par email (réponse générique anti-énumération)
-- `GET /auth/password-reset/<token>/` — **public** : valide le jeton
-- `POST /auth/password-reset/<token>/` — **public** : applique le nouveau mot de passe
-
-Jeton à usage unique, **valable 1 heure**, anciens jetons invalidés à chaque nouvelle demande. Mot de passe robuste exigé. Lien construit avec `FRONTEND_URL`.
-
-**Politique de mot de passe robuste** (inscription + réinitialisation) : ≥ 8 caractères, au moins une majuscule, une minuscule, un chiffre et un symbole.
-
-### Matières (`apps/subjects`)
-
-- Coefficient + affectation à un professeur (`teacher`)
-- **Matière rattachée à une classe** *ou* **matière générale** (sans classe — `classe` optionnel)
-- **Anti-doublon** : impossible de créer deux fois la même matière (même nom + même classe, ou même nom au niveau général), insensible à la casse et aux espaces
-
-### Élèves (`apps/students`)
-
-- CRUD complet avec génération automatique du matricule et du QR code
-- Endpoint `GET /students/class_summary/?classe_id=X` — retourne élèves + moyenne calculée + nombre d'absences en 2 requêtes agrégées (pas de N+1)
-- Endpoint `GET /students/{id}/situation/` — fiche complète (notes, présences, paiements)
-
-### Présences (`apps/attendance`)
-
-- Scan QR → `POST /attendance/scan/` avec `scan_type=IN|OUT`
-- Détection automatique des retards (après 07h45)
-- Notification immédiate tricanal : **SMS** + **WhatsApp** + **Email** au parent
-- Endpoint `GET /attendance/today/` — présences du jour
-
-### Notes (`apps/grades`)
-
-- Types : Devoir, Examen, Interrogation, Oral, TP
-- Historique des modifications via `GradeHistory` (qui, quand, ancienne valeur)
-- Calcul de la moyenne pondérée par coefficient de matière
-
-### Paiements & Dépenses (`apps/payments`)
-
-- Suivi des paiements élève (PAID / PENDING / OVERDUE)
-- 7 catégories de dépenses : Salaires, Fournitures, Maintenance, Services, Transport, Événements, Autre
-- Broadcast **SMS** : `POST /payments/broadcast/send/`
-- Broadcast **Email** : `POST /payments/broadcast/email/`
-- Solde net = total encaissé − total dépenses (affiché dans le dashboard)
-
-### Rapports (`apps/reports`)
-
-- `GET /reports/dashboard/` — stats globales (mise en cache 60 s)
-- `GET /reports/attendance/` — rapport absences par classe + plage de dates
-- `GET /reports/attendance/pdf/` — PDF d'absences périodique (daily/weekly/monthly/custom)
-- `GET /reports/payments/` — taux de paiement par classe
-- `GET /reports/export/` — export Excel stylisé (notes, absences, paiements, classements)
-- `GET /reports/bulletin/{id}/` — bulletin PDF individuel
-
-### Enseignants (`apps/teachers`)
-
-- Profil avec matières assignées et numéro de téléphone
-- `GET /teachers/dashboard_stats/` — stats par matière (mis en cache 2 min par professeur)
-- `LessonLog` — cahier de texte : sujet, objectifs, contenu, devoirs, progression (%)
-
-### Notifications multicanal (`utils/`)
-
-| Service | Fichier | Déclencheurs |
-|---|---|---|
-| SMS | `sms_service.py` | Entrée QR, sortie QR, absence journalière, broadcast |
-| WhatsApp | `whatsapp_service.py` | Entrée QR, sortie QR, absence journalière |
-| Email | `email_service.py` | Entrée QR, sortie QR, absence journalière, broadcast |
-
-Templates WhatsApp disponibles : `arrival`, `departure`, `absence`, `payment`, `results`
-
-Templates Email disponibles : `results`, `absence`, `payment_reminder`, `meeting`, `custom`
-
----
-
-## Pages frontend par rôle
-
-### Directeur / Admin
-
-| Page | Route | Description |
-|---|---|---|
-| Tableau de bord | `/` | KPIs, dépenses, solde net, présences du jour |
-| Élèves | `/students` | Liste complète + CRUD |
-| Classes | `/classes` | Arbre niveau → classe → élèves (moyenne, absences, paiement) |
-| Matières | `/subjects` | Gestion avec coefficient et professeur affecté |
-| Professeurs | `/teachers` | Liste et profils |
-| Notes | `/grades` | Consultation et saisie |
-| Présences | `/attendance` | Scanner QR + récapitulatif du jour |
-| Paiements | `/payments` | Suivi et statuts |
-| Dépenses | `/expenses` | Gestion par catégorie |
-| Rapports | `/reports` | 4 onglets, exports Excel, PDF d'absences périodique, bulletins PDF/ZIP |
-| Communications | `/communications` | Broadcast SMS / WhatsApp / Email par classe ou global |
-| Utilisateurs | `/users` | Gestion des comptes |
-| Journal | `/logs` | Audit des activités |
-
-### Professeur
-
-| Page | Route | Description |
-|---|---|---|
-| Tableau de bord | `/teacher` | Stats matières, derniers cours, accès rapide |
-| Mon profil | `/teacher/profile` | Informations personnelles |
-| Saisie des notes | `/teacher/grades` | Gestion des notes par matière/classe |
-| Cahier de texte | `/teacher/lessons` | LessonLog avec barre de progression |
-
-### Agent
-
-| Page | Route | Description |
-|---|---|---|
-| Scanner | `/attendance` | Scanner QR code entrée/sortie |
-
-### Pages publiques (sans connexion)
-
-| Page | Route | Description |
-|---|---|---|
-| Connexion | `/login` | Authentification + lien « Mot de passe oublié ? » |
-| Inscription | `/register/:token` | Création de compte via lien d'invitation (prof/agent) |
-| Mot de passe oublié | `/forgot-password` | Demande d'un lien de réinitialisation par email |
-| Réinitialisation | `/reset-password/:token` | Définition d'un nouveau mot de passe |
-
----
-
-## Notifications (SMS / WhatsApp / Email)
-
-### Configuration Twilio (SMS + WhatsApp)
-
-```env
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_PHONE_NUMBER=+15005550006
-TWILIO_WHATSAPP_FROM=whatsapp:+14155238886   # sandbox Twilio (dev)
-# En production : whatsapp:+VotreNuméroApprouvé
-```
-
-Pour utiliser le **sandbox WhatsApp** en développement :
-1. Envoyer `join <mot-clé-sandbox>` depuis son téléphone au `+14155238886`
-2. Les messages seront délivrés sans approbation Meta
-
-### Configuration Email (SMTP)
-
-```env
-EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_HOST_USER=votre@gmail.com
-EMAIL_HOST_PASSWORD=app_password_gmail
-DEFAULT_FROM_EMAIL=SchoolPro <noreply@schoolpro.local>
-```
-
-En développement (sans `.env`), les emails sont affichés dans la console Django.
-
-### Notifications automatiques d'absence (cron)
+Pour réinitialiser la base avant un nouveau seed :
 
 ```bash
-# Lancer chaque soir à 18h00
-python manage.py send_absence_notifications
-
-# Simuler sans envoyer
-python manage.py send_absence_notifications --dry-run
-
-# Pour une date précise
-python manage.py send_absence_notifications --date 2026-01-15
+python manage.py seed_data --reset
 ```
-
-Exemple de crontab :
-```
-0 18 * * 1-5 cd /app && python manage.py send_absence_notifications >> /var/log/absences.log 2>&1
-```
-
----
-
-## Sécurité
-
-| Mesure | Détail |
-|---|---|
-| JWT hardening | Access 15 min, refresh 7 jours, rotation, blacklist |
-| Rate limiting | Login : 10/min · Anonyme : 60/h · Utilisateur : 1000/h |
-| En-têtes HTTP | `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy` (prod) |
-| HTTPS (prod) | HSTS 1 an + subdomains + preload, SSL redirect |
-| Cookies (prod) | `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, `CSRF_COOKIE_SAMESITE=Strict` |
-| Taille des uploads | Max 10 Mo (fichiers et corps de requête) |
-| Hashage mots de passe | PBKDF2 + bcrypt + Argon2 (waterfall) |
-| RBAC | Permissions par rôle sur chaque endpoint DRF |
-| Journal de sécurité | `logs/security.log` (rotation 10 Mo × 5 fichiers) |
-
----
-
-## Performance & disponibilité
-
-### Optimisations
-
-- **Cache dashboard admin** : 60 secondes (`cache_key = dashboard_stats_admin`)
-- **Cache dashboard enseignant** : 2 minutes par professeur
-- **Index DB** : `student(classe, is_active)`, `student(payment_status)`, `student(last_name, first_name)`
-- **`select_related` / `prefetch_related`** sur tous les querysets de liste
-- **Agrégations SQL** : `class_summary` retourne moyennes + absences en 2 requêtes
-- **`CONN_MAX_AGE = 60`** : réutilisation des connexions DB
-
-### Sauvegarde automatique
-
-```bash
-# Sauvegarder (SQLite ou PostgreSQL via pg_dump)
-python manage.py backup_db
-
-# Destination personnalisée + rétention
-python manage.py backup_db --dest /srv/backups --keep 30
-```
-
-### Health check
-
-```
-GET /api/health/
-→ { "status": "ok", "timestamp": "...", "database": "connected", "version": "1.0.0" }
-```
-
-### Logs applicatifs
-
-| Fichier | Contenu |
-|---|---|
-| `logs/app.log` | Toute l'activité applicative (INFO+) |
-| `logs/security.log` | Événements de sécurité (WARNING+) |
-| `logs/errors.log` | Erreurs uniquement (ERROR+) |
-
-Rotation automatique : 10 Mo maximum, 5 fichiers conservés.
-
----
-
-## Variables d'environnement
-
-Créer un fichier `.env` à la racine `backend/` :
-
-```env
-# Base
-SECRET_KEY=changeme-en-production
-DEBUG=False
-ALLOWED_HOSTS=localhost,127.0.0.1
-
-# Base de données PostgreSQL
-DATABASE_URL=postgresql://user:password@localhost:5432/schoolpro
-
-# JWT
-JWT_ACCESS_TOKEN_LIFETIME_MINUTES=15
-JWT_REFRESH_TOKEN_LIFETIME_DAYS=7
-
-# Twilio SMS
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_PHONE_NUMBER=
-
-# WhatsApp Business (Twilio)
-TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
-
-# Email SMTP
-EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_HOST_USER=
-EMAIL_HOST_PASSWORD=
-DEFAULT_FROM_EMAIL=SchoolPro <noreply@schoolpro.local>
-
-# Nom de l'établissement (apparaît dans les emails)
-SCHOOL_NAME=Mon École
-
-# URL du frontend — sert à construire les liens envoyés par email (réinitialisation)
-FRONTEND_URL=http://localhost:3000
-
-# Capacité maximale d'élèves actifs par école (défaut : 7000)
-MAX_STUDENTS_PER_SCHOOL=7000
-
-# Cache Redis (optionnel — LocMem si absent)
-REDIS_URL=redis://localhost:6379/0
-
-# CORS
-CORS_ALLOWED_ORIGINS=http://localhost:3000
-```
-
----
 
 ## Commandes utiles
 
 ### Docker
 
 ```bash
-# Production
 docker compose up -d --build
 docker compose down
 docker compose logs -f
-docker compose logs -f backend
-
-# Développement (hot reload)
-docker compose -f docker-compose.dev.yml up --build
-
-# Utilitaires
 docker compose exec backend python manage.py migrate
 docker compose exec backend python manage.py seed_data
-docker compose exec backend python manage.py backup_db
-docker compose exec backend python manage.py send_absence_notifications --dry-run
 docker compose exec backend python manage.py createsuperuser
-
-# Réinitialiser complètement
-docker compose down -v && docker compose up -d --build
 ```
 
 ### Makefile
 
 ```bash
-make up        # Démarrer en production
-make dev       # Démarrer en dev (hot reload)
-make down      # Arrêter
-make logs      # Logs
-make shell     # Shell backend
-make seed      # Données de test
-make clean     # Tout supprimer
-make reset     # Réinitialiser la base
-make help      # Aide
+make up
+make dev
+make down
+make logs
+make shell
+make seed
+make clean
+make reset
+make help
 ```
 
-### Django (hors Docker)
+## Variables d’environnement
+
+Un fichier .env à la racine du projet est utilisé par Docker Compose. Les variables principales sont :
+
+```env
+DJANGO_SECRET_KEY=change-me
+DJANGO_DEBUG=True
+DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
+DB_NAME=school_management
+DB_USER=schoolpro
+DB_PASSWORD=schoolpro_dev
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_PHONE_NUMBER=
+TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
+EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+FRONTEND_URL=http://localhost:3000
+```
+
+## Déploiement local (serveur LAN, Windows)
+
+SchoolPro est conçu pour un déploiement **local par établissement** : un poste
+serveur Windows héberge l'application, les autres postes y accèdent via le
+réseau local.
+
+- **Accès clients** : `http://IP-DU-SERVEUR:5006` (le front écoute sur le port
+  **5006**, cf. `frontend/.env`). L'API est déduite automatiquement de l'hôte du
+  navigateur (`http://IP-DU-SERVEUR:8000/api`).
+- **Poste serveur** : Windows allumé en permanence, **IP statique**, et **règles
+  de pare-feu** autorisant les ports **5006** (application) et **8000** (API) en
+  entrée sur le réseau local.
+- **Portée** : une seule école par installation (`SINGLE_SCHOOL_MODE=True`).
+- **Langues** : Français, Mòoré, English (sélecteur dans le menu latéral).
+- **Licence** : essai gratuit de 28 jours, puis activation par **code**
+  (renouvellement réglé par Mobile Money hors application). L'identifiant machine
+  et le compte à rebours sont visibles dans l'écran d'activation.
+
+Ouverture des ports dans le pare-feu Windows (PowerShell administrateur) :
+
+```powershell
+New-NetFirewallRule -DisplayName "SchoolPro App"  -Direction Inbound -LocalPort 5006 -Protocol TCP -Action Allow
+New-NetFirewallRule -DisplayName "SchoolPro API"  -Direction Inbound -LocalPort 8000 -Protocol TCP -Action Allow
+```
+
+Générer un code d'activation (côté éditeur, avec la clé secrète de licence) :
 
 ```bash
-python manage.py migrate
-python manage.py seed_data                                   # Données de test
-python manage.py backup_db --dest ./backups --keep 30       # Sauvegarde DB
-python manage.py send_absence_notifications --dry-run       # Test alertes absence
-python manage.py createsuperuser
+python manage.py issue_license_code --machine-id <ID_MACHINE> --months 12
 ```
 
----
+## Notes importantes
 
-## Tests de charge
+- En développement local, le backend utilise SQLite par défaut.
+- En environnement Docker, la configuration bascule vers PostgreSQL.
+- Les notifications SMS/WhatsApp/Email sont optionnelles et ne sont envoyées que si les variables de configuration associées sont fournies.
 
-Le fichier `backend/locustfile.py` valide les critères de recette : **100 utilisateurs simultanés, temps de réponse P95 < 2 s, taux d'erreur < 1 %**.
+## Auteur
 
-### Trois profils d'utilisateurs simulés
-
-| Profil | Poids | Comportement |
-|---|---|---|
-| Admin (20%) | Dashboard, liste élèves, class_summary, paiements |
-| Enseignant (60%) | Dashboard stats, notes, cahier de texte |
-| Agent (20%) | Présences du jour, statistiques d'assiduité |
-
-### Lancer les tests
-
-```bash
-# Installer Locust
-pip install locust
-
-# Interface web (http://localhost:8089)
-locust --host http://127.0.0.1:8000
-
-# Mode headless — 100 utilisateurs, montée en 10/s, durée 60 s
-locust --headless -u 100 -r 10 --run-time 60s \
-       --host http://127.0.0.1:8000 \
-       --csv=results/loadtest
-
-# Avec Docker
-docker compose exec backend locust --headless -u 100 -r 10 \
-       --run-time 60s --host http://backend:8000
-```
-
-Les seuils sont vérifiés automatiquement à la fin du test (code de sortie 1 si dépassement).
-
----
-
-## Modèle de données
-
-| Entité | Attributs clés |
-|---|---|
-| Utilisateur | id, nom, prénom, email, rôle (DIRECTOR/ADMIN/TEACHER/AGENT), mot de passe hashé, statut |
-| Élève | id, nom, prénom, classe, QR code, parent (nom, téléphone, email), statut_paiement |
-| Professeur | id, nom, prénom, matières assignées, numéro de téléphone |
-| Classe | id, nom, niveau, année scolaire, capacité |
-| Matière | id, nom, coefficient, professeur_id, classe_id |
-| Note | id, élève_id, matière_id, valeur, max_valeur, type_évaluation, date |
-| Présence | id, élève_id, date, heure_entrée, heure_sortie, statut (PRESENT/ABSENT/LATE) |
-| Paiement | id, élève_id, montant, date, statut, numéro de reçu |
-| Dépense | id, libellé, catégorie, montant, date, enregistré_par |
-| LessonLog | id, professeur_id, matière_id, date, sujet, objectifs, contenu, devoirs, progression_% |
-| ActivityLog | id, utilisateur_id, action, description, ip, timestamp |
-| GradeHistory | id, note_id, ancienne_valeur, modifié_par, timestamp |
-
----
-
-**SchoolPro** — Développé par AMADOU DAYAMBA
+SchoolPro — développement et maintenance par Amadou Dayamba.

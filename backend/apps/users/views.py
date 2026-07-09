@@ -375,6 +375,18 @@ class EcoleViewSet(viewsets.ModelViewSet):
         from .models import Ecole
         return Ecole.objects.all()
 
+    def create(self, request, *args, **kwargs):
+        # Mode mono-établissement : 1 seule école par installation
+        from django.conf import settings as dj_settings
+        from .models import Ecole
+        if getattr(dj_settings, 'SINGLE_SCHOOL_MODE', True) and Ecole.objects.exists():
+            return Response(
+                {'error': "Mode mono-établissement : cette installation ne gère qu'une "
+                          "seule école. Impossible d'en créer une autre."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().create(request, *args, **kwargs)
+
 
 class NotificationListView(APIView):
     """Notifications récentes (polling temps réel). `?since=<id>` ne renvoie que

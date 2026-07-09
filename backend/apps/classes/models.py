@@ -56,6 +56,27 @@ class Classe(models.Model):
         return self.students.count()
 
 
+class PensionTranche(models.Model):
+    """Tranche de l'échéancier de scolarité (pension) d'une classe.
+
+    Les élèves de la classe héritent de ce plan de versements. Le montant total
+    des tranches devrait correspondre au `tuition_fee` de la classe."""
+    classe = models.ForeignKey(
+        Classe, on_delete=models.CASCADE, related_name='tranches'
+    )
+    label = models.CharField(max_length=100)  # ex. "Inscription", "2e versement"
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    due_date = models.DateField(null=True, blank=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'pension_tranches'
+        ordering = ['order', 'due_date', 'id']
+
+    def __str__(self):
+        return f"{self.classe.name} — {self.label} ({self.amount})"
+
+
 class ScheduleEntry(models.Model):
     """Créneau d'emploi du temps : classe, matière, salle, jour, horaires."""
     DAYS = [
