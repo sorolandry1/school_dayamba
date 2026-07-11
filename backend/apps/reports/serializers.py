@@ -4,7 +4,7 @@ from .models import DocumentTemplate, PlatformSettings
 
 class PlatformSettingsSerializer(serializers.ModelSerializer):
     logo_url = serializers.SerializerMethodField()
-    ecole_id = serializers.IntegerField(source='ecole_id', read_only=True)
+    ecole_id = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = PlatformSettings
@@ -34,7 +34,7 @@ class ReportRequestSerializer(serializers.Serializer):
 
 class DocumentTemplateSerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField()
-    ecole_id = serializers.IntegerField(source='ecole_id', read_only=True)
+    ecole_id = serializers.IntegerField(read_only=True)
     ecole_name = serializers.CharField(source='ecole.name', read_only=True)
 
     class Meta:

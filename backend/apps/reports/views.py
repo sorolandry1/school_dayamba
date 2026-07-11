@@ -23,7 +23,70 @@ from utils.pdf_generator import (
     generate_student_sheet_pdf, generate_class_roster_pdf, generate_timetable_pdf,
     generate_teacher_timetable_pdf,
 )
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Q, F, FloatField
+from django.db.models.functions import Cast
+
+
+def _normalized_avg_expr():
+    """Expression ORM de la moyenne normalisée sur 20 : ``value * 20 / max_value``.
+
+    Ramène chaque note sur /20 AVANT de moyenner, au lieu de moyenner des valeurs
+    brutes d'échelles hétérogènes (une note /10 ou /100 fausserait ``Avg('value')``).
+    Miroir SQL de ``Grade.normalized_value``.
+    """
+    return Avg(Cast('value', FloatField()) * 20.0 / Cast('max_value', FloatField()))
+
+
+def _compute_rankings_map(students, subjects, period):
+    """Classement d'une classe calculé en UNE requête agrégée (évite le N+1).
+
+    Retourne ``{student_id: {rank, total_students, general_average, class_average}}``.
+    Chaque moyenne par matière est normalisée sur 20 puis pondérée par le
+    coefficient de la matière. Seules les matières où l'élève a au moins une note
+    contribuent à la pondération (comportement identique à l'ancien calcul).
+    """
+    students = list(students)
+    student_ids = [s.id for s in students]
+    subject_coeff = {subj.id: float(subj.coefficient) for subj in subjects}
+    if not student_ids:
+        return {}
+
+    # Moyenne normalisée par (élève, matière) en une seule requête groupée.
+    per_pair = {}
+    if subject_coeff:
+        grade_q = Grade.objects.filter(
+            student_id__in=student_ids, subject_id__in=subject_coeff.keys()
+        )
+        if period:
+            grade_q = grade_q.filter(period=period)
+        for row in grade_q.values('student_id', 'subject_id').annotate(avg=_normalized_avg_expr()):
+            if row['avg'] is not None:
+                per_pair[(row['student_id'], row['subject_id'])] = float(row['avg'])
+
+    averages = []
+    for sid in student_ids:
+        total_weighted = 0.0
+        total_coeff = 0.0
+        for subj_id, coeff in subject_coeff.items():
+            avg = per_pair.get((sid, subj_id))
+            if avg is not None:
+                total_weighted += avg * coeff
+                total_coeff += coeff
+        general_avg = round(total_weighted / total_coeff, 2) if total_coeff > 0 else 0
+        averages.append({'student_id': sid, 'average': general_avg})
+
+    averages.sort(key=lambda x: x['average'], reverse=True)
+    total_students = len(averages)
+    class_avg = round(sum(a['average'] for a in averages) / total_students, 2) if averages else 0
+    return {
+        entry['student_id']: {
+            'rank': i + 1,
+            'total_students': total_students,
+            'general_average': entry['average'],
+            'class_average': class_avg,
+        }
+        for i, entry in enumerate(averages)
+    }
 
 
 def _selected_ecole(request):
@@ -135,30 +198,8 @@ class BulletinPDFView(APIView):
         period = normalize_period(period_raw)
         subjects = Subject.objects.filter(classe=student.classe)
         students_in_class = Student.objects.filter(classe=student.classe, is_active=True)
-        rankings = []
-        for s in students_in_class:
-            total_weighted = 0
-            total_coeff = 0
-            for subj in subjects:
-                grades = Grade.objects.filter(student=s, subject=subj)
-                if period:
-                    grades = grades.filter(period=period)
-                if grades.exists():
-                    avg = grades.aggregate(a=Avg('value'))['a']
-                    coeff = float(subj.coefficient)
-                    total_weighted += float(avg) * coeff
-                    total_coeff += coeff
-            general_avg = round(total_weighted / total_coeff, 2) if total_coeff > 0 else 0
-            rankings.append({'student_id': s.id, 'average': general_avg})
-        rankings.sort(key=lambda x: x['average'], reverse=True)
-        rank = next((i + 1 for i, r in enumerate(rankings) if r['student_id'] == student.id), 0)
-        student_avg = next((r['average'] for r in rankings if r['student_id'] == student.id), 0)
-        return {
-            'rank': rank,
-            'total_students': len(rankings),
-            'general_average': student_avg,
-            'class_average': round(sum(r['average'] for r in rankings) / len(rankings), 2) if rankings else 0,
-        }
+        rankings_map = _compute_rankings_map(students_in_class, subjects, period)
+        return rankings_map.get(student.id, {})
 
 
 class BulletinClassePDFView(APIView):
@@ -215,34 +256,7 @@ class BulletinClassePDFView(APIView):
     def _calculate_all_rankings(self, students, subjects, period_raw=None):
         from apps.reports.academics import normalize_period
         period = normalize_period(period_raw)
-        averages = []
-        for s in students:
-            total_weighted = 0
-            total_coeff = 0
-            for subj in subjects:
-                grades = Grade.objects.filter(student=s, subject=subj)
-                if period:
-                    grades = grades.filter(period=period)
-                if grades.exists():
-                    avg = grades.aggregate(a=Avg('value'))['a']
-                    total_weighted += float(avg) * float(subj.coefficient)
-                    total_coeff += float(subj.coefficient)
-            general_avg = round(total_weighted / total_coeff, 2) if total_coeff > 0 else 0
-            averages.append({'student_id': s.id, 'average': general_avg})
-
-        averages.sort(key=lambda x: x['average'], reverse=True)
-        class_avg = round(sum(a['average'] for a in averages) / len(averages), 2) if averages else 0
-        total_students = len(averages)
-
-        result = {}
-        for i, entry in enumerate(averages):
-            result[entry['student_id']] = {
-                'rank': i + 1,
-                'total_students': total_students,
-                'general_average': entry['average'],
-                'class_average': class_avg,
-            }
-        return result
+        return _compute_rankings_map(students, subjects, period)
 
 
 class DashboardStatsView(APIView):
