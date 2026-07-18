@@ -11,7 +11,21 @@ from reportlab.platypus import (
     Spacer, HRFlowable
 )
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-from django.db.models import Avg
+from django.db.models import Avg, FloatField
+from django.db.models.functions import Cast
+
+
+def _subject_normalized_avg(grades_qs):
+    """Moyenne d'une matière normalisée sur 20 (``value * 20 / max_value``).
+
+    Utilise ``normalized_value`` au niveau base plutôt qu'``Avg('value')`` brut,
+    afin qu'une note /10 ou /100 soit correctement ramenée sur /20 avant moyenne.
+    Retourne 0 si aucune note.
+    """
+    res = grades_qs.aggregate(
+        a=Avg(Cast('value', FloatField()) * 20.0 / Cast('max_value', FloatField()))
+    )['a']
+    return round(float(res), 2) if res is not None else 0
 
 
 # ────────────────────────────────────────────────────────────────
@@ -224,11 +238,7 @@ def generate_bulletin_pdf(student, subjects, rankings_data):
 
     for subject in subjects:
         grades = Grade.objects.filter(student=student, subject=subject)
-        if grades.exists():
-            avg = grades.aggregate(a=Avg('value'))['a']
-            avg = round(float(avg), 2)
-        else:
-            avg = 0
+        avg = _subject_normalized_avg(grades) if grades.exists() else 0
 
         coeff = float(subject.coefficient)
         total_weighted += avg * coeff
@@ -536,7 +546,7 @@ def generate_bulletin_pdf_templated(student, subjects, rankings_data, template_c
 
         for subject in subjects:
             grades = _grades_for(subject)
-            avg = round(float(grades.aggregate(a=Avg('value'))['a']), 2) if grades.exists() else 0
+            avg = _subject_normalized_avg(grades) if grades.exists() else 0
             coeff = float(subject.coefficient)
             total_weighted += avg * coeff
             total_coeff += coeff

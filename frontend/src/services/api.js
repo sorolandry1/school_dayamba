@@ -2,15 +2,21 @@ import axios from 'axios';
 
 // URL de l'API :
 //  1. REACT_APP_API_URL si défini (override explicite) ;
-//  2. sinon, déduite de l'hôte du navigateur → permet l'accès LAN : un client
-//     sur http://IP-SERVEUR:5006 appelle automatiquement http://IP-SERVEUR:8000/api.
-const API_PORT = process.env.REACT_APP_API_PORT || '8000';
+//  2. REACT_APP_API_PORT si défini (déploiement front/API sur ports séparés) ;
+//  3. sinon, déduite de l'hôte du navigateur :
+//     - serveur de dev CRA (npm start, port 3000) → API Django sur le port 8000 ;
+//     - déploiement empaqueté mono-port (exe, port 5006) ou tout autre →
+//       MÊME origine que la page (l'exe sert API + front sur le même port).
+const API_PORT = process.env.REACT_APP_API_PORT;
 function resolveApiBaseUrl() {
   if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
   if (typeof window !== 'undefined' && window.location?.hostname) {
-    return `${window.location.protocol}//${window.location.hostname}:${API_PORT}/api`;
+    const { protocol, hostname, port } = window.location;
+    if (API_PORT) return `${protocol}//${hostname}:${API_PORT}/api`;
+    if (port === '3000') return `${protocol}//${hostname}:8000/api`;
+    return `${protocol}//${hostname}${port ? `:${port}` : ''}/api`;
   }
-  return 'http://127.0.0.1:8000/api';
+  return '/api';
 }
 
 const API_BASE_URL = resolveApiBaseUrl();

@@ -46,8 +46,17 @@ if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 # Media servi aussi hors DEBUG lorsque l'app est empaquetée (un seul port).
+# NB : django.conf.urls.static.static() est un no-op quand DEBUG=False ; on route
+# donc explicitement vers la vue `serve` pour que les fichiers média (photos
+# élèves, QR codes, logos) soient réellement servis dans l'exe distribué —
+# sinon /media/... tombe dans le catch-all SPA et renvoie index.html.
 if settings.FRONTEND_BUILD_DIR and not settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    from django.views.static import serve as _media_serve
+    _media_prefix = settings.MEDIA_URL.lstrip('/')
+    urlpatterns += [
+        re_path(rf'^{_media_prefix}(?P<path>.*)$', _media_serve,
+                {'document_root': settings.MEDIA_ROOT}),
+    ]
 
 # ─── Application React (build) : catch-all EN DERNIER ────────────────────────
 # Ne s'active que si un build est empaqueté ; sinon (dev) le front tourne à part.
